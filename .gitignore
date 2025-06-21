@@ -1,2 +1,5 @@
 # Local Netlify folder
 .netlify
+node_modules
+liuliangka_h5order_save_demo.*
+package-lock.json
