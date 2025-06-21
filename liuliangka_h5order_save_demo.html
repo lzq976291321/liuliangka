@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <title>免费领取表单</title>
+  </head>
+  <body>
+    <form id="freeForm">
+      姓名：<input type="text" name="Name" required /><br />
+      手机号：<input type="text" name="Phone" required /><br />
+      省份：<input type="text" name="Province" required /><br />
+      城市：<input type="text" name="City" required /><br />
+      区域：<input type="text" name="Area" required /><br />
+      地址：<input type="text" name="Address" required /><br />
+      身份证号：<input type="text" name="IDCard" required /><br />
+      <button type="submit">提交</button>
+    </form>
+    <div id="result"></div>
+    <script>
+      document.getElementById("freeForm").onsubmit = async function (e) {
+        e.preventDefault();
+        const form = e.target;
+        const data = {
+          ChUserName: "",
+          ThirdPhone: "",
+          NumberId: "",
+          NumberPoolId: "",
+          Name: form.Name.value,
+          Phone: form.Phone.value,
+          Province: form.Province.value,
+          City: form.City.value,
+          Area: form.Area.value,
+          Address: form.Address.value,
+          ProductID: "3a63e330af913423", // 固定值
+          IDCard: form.IDCard.value,
+          AgentID: "5879e81e899912ce", // 固定值
+          HeadImage: "",
+          BackImage: "",
+          FrontImage: "",
+          ProSource: "",
+        };
+        // 构造 x-www-form-urlencoded 格式
+        const body = Object.keys(data)
+          .map(
+            (key) =>
+              encodeURIComponent(key) + "=" + encodeURIComponent(data[key])
+          )
+          .join("&");
+        const res = await fetch("https://h5.lot-ml.com/H5OrderEn/Save", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          },
+          body,
+        });
+        const text = await res.text();
+        document.getElementById("result").innerText = text;
+      };
+    </script>
+  </body>
+</html>
