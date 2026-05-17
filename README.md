@@ -22,7 +22,7 @@ npm run dev
 ```bash
 HAOKA172_USER_ID=你的172登录账号
 HAOKA172_SECRET=管理员提供的secret
-NEXT_PUBLIC_SITE_URL=https://liuliangka-blue.vercel.app
+NEXT_PUBLIC_SITE_URL=https://liuliangka.netlify.app
 ```
 
 未配置时，应用会使用本地样例套餐，方便先完善页面和转化链路。
@@ -34,6 +34,12 @@ NEXT_PUBLIC_SITE_URL=https://liuliangka-blue.vercel.app
 访问 `/content` 生成知乎回答、小红书笔记、短视频口播、FAQ、SEO 文案和渠道链接。
 
 访问 `/poster/shenzhen` 这类页面查看可截图海报，支持的 slug 来自 `lib/scenarios.ts`。
+
+## 部署入口
+
+正式入口优先使用 Netlify：`https://liuliangka.netlify.app`。
+
+Vercel 保留为预览环境，不作为国内流量投放入口。
 
 点击追踪默认在本地写入 `.data/events.jsonl`，线上环境建议配置：
 

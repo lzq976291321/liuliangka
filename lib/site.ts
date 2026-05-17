@@ -1,4 +1,4 @@
-const fallbackSiteUrl = "https://liuliangka-blue.vercel.app";
+const fallbackSiteUrl = "https://liuliangka.netlify.app";
 
 export const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || fallbackSiteUrl).replace(/\/$/, "");
 
