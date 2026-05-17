@@ -36,6 +36,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <Link href="/liuliangka/cheap">低月租</Link>
                 <Link href="/assistant">选号助手</Link>
                 <Link href="/ops">投放工作台</Link>
+                <Link href="/content">内容工厂</Link>
               </nav>
             </div>
           </header>

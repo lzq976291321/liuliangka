@@ -2,30 +2,15 @@ import type { Metadata } from "next";
 import type { Route } from "next";
 import Link from "next/link";
 import { BarChart3, ExternalLink, Flame, Link2, Radar, Route as RouteIcon, Signal, Target } from "lucide-react";
+import { channelConfigs, getCampaignUrl } from "@/lib/campaign";
 import { getAllProducts } from "@/lib/haoka172";
 import { rankProducts } from "@/lib/recommendation";
 import { scenarioConfigs } from "@/lib/scenarios";
-import { buildSiteUrl } from "@/lib/site";
 
 export const metadata: Metadata = {
   title: "投放工作台",
   description: "按套餐、关键词、场景和渠道生成第一轮流量卡内容投放清单。"
 };
-
-const channelConfigs = [
-  { source: "zhihu", label: "知乎", play: "长回答", angle: "避坑 + 对比 + 推荐" },
-  { source: "xiaohongshu", label: "小红书", play: "图文笔记", angle: "预算数字 + 使用场景" },
-  { source: "baidu", label: "百度", play: "SEO", angle: "地区词 + 套餐表" }
-];
-
-function getCampaignUrl(path: string, source: string, campaign: string, content: string) {
-  const url = new URL(buildSiteUrl(path));
-  url.searchParams.set("utm_source", source);
-  url.searchParams.set("utm_medium", "content");
-  url.searchParams.set("utm_campaign", campaign);
-  url.searchParams.set("utm_content", content);
-  return url.toString();
-}
 
 export default async function OpsPage() {
   const products = await getAllProducts();
@@ -72,6 +57,10 @@ export default async function OpsPage() {
             <Link className="button" href="/assistant">
               <Radar size={17} />
               重新选品
+            </Link>
+            <Link className="button" href="/content">
+              内容工厂
+              <ExternalLink size={17} />
             </Link>
           </div>
         </div>

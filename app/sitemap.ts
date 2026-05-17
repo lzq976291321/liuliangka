@@ -19,8 +19,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
       url: buildSiteUrl("/ops"),
       lastModified: new Date()
     },
+    {
+      url: buildSiteUrl("/content"),
+      lastModified: new Date()
+    },
     ...scenarioConfigs.map((scenario) => ({
       url: buildSiteUrl(`/liuliangka/${scenario.slug}`),
+      lastModified: new Date()
+    })),
+    ...scenarioConfigs.map((scenario) => ({
+      url: buildSiteUrl(`/poster/${scenario.slug}`),
       lastModified: new Date()
     })),
     ...products.map((product) => ({

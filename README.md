@@ -31,6 +31,10 @@ NEXT_PUBLIC_SITE_URL=https://liuliangka-blue.vercel.app
 
 访问 `/ops` 查看第一轮关键词、主推套餐和渠道 UTM 链接。
 
+访问 `/content` 生成知乎回答、小红书笔记、短视频口播、FAQ、SEO 文案和渠道链接。
+
+访问 `/poster/shenzhen` 这类页面查看可截图海报，支持的 slug 来自 `lib/scenarios.ts`。
+
 点击追踪默认在本地写入 `.data/events.jsonl`，线上环境建议配置：
 
 ```bash
