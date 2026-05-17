@@ -22,6 +22,18 @@ npm run dev
 ```bash
 HAOKA172_USER_ID=你的172登录账号
 HAOKA172_SECRET=管理员提供的secret
+NEXT_PUBLIC_SITE_URL=https://liuliangka-blue.vercel.app
 ```
 
 未配置时，应用会使用本地样例套餐，方便先完善页面和转化链路。
+
+## 投放工作台
+
+访问 `/ops` 查看第一轮关键词、主推套餐和渠道 UTM 链接。
+
+点击追踪默认在本地写入 `.data/events.jsonl`，线上环境建议配置：
+
+```bash
+TRACK_WEBHOOK_URL=你的点击事件接收地址
+TRACK_WEBHOOK_SECRET=可选的校验密钥
+```

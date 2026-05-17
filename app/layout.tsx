@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { siteUrl } from "@/lib/site";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://local-card.example"),
+  metadataBase: new URL(siteUrl),
   title: {
     default: "本地流量卡推荐工具",
     template: "%s - 本地流量卡推荐工具"
@@ -12,7 +13,8 @@ export const metadata: Metadata = {
   openGraph: {
     title: "本地流量卡推荐工具",
     description: "地区场景化流量卡推荐、套餐对比和办理点击追踪。",
-    type: "website"
+    type: "website",
+    url: siteUrl
   }
 };
 
@@ -33,6 +35,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <Link href="/liuliangka/student">学生党</Link>
                 <Link href="/liuliangka/cheap">低月租</Link>
                 <Link href="/assistant">选号助手</Link>
+                <Link href="/ops">投放工作台</Link>
               </nav>
             </div>
           </header>
