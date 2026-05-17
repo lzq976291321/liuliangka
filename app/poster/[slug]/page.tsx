@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, BadgeCheck, RadioTower } from "lucide-react";
+import { PosterActions } from "@/app/poster/[slug]/PosterActions";
 import { RemoteImage } from "@/components/RemoteImage";
 import { generateContentPackage } from "@/lib/content-factory";
 import { getAllProducts } from "@/lib/haoka172";
@@ -40,7 +41,6 @@ export default async function PosterPage({ params }: PosterPageProps) {
   const ranked = rankProducts(products, scenario.context);
   const content = generateContentPackage(scenario, ranked);
   const primary = ranked[0]?.product;
-  const firstLink = content.links[0]?.url ?? content.path;
 
   return (
     <main className="page poster-page">
@@ -95,7 +95,7 @@ export default async function PosterPage({ params }: PosterPageProps) {
               </div>
               <div>
                 <strong>办理前先看对比</strong>
-                <small>{firstLink}</small>
+                <small>复制渠道链接后发布，海报不展示明文长链接</small>
               </div>
             </div>
           </div>
@@ -111,10 +111,9 @@ export default async function PosterPage({ params }: PosterPageProps) {
             </ul>
           </div>
           <div className="ops-panel">
-            <h2 className="section-title">主推链接</h2>
-            <p className="section-note" style={{ overflowWrap: "anywhere" }}>
-              {firstLink}
-            </p>
+            <h2 className="section-title">渠道链接</h2>
+            <p className="section-note">链接只通过按钮复制，不在页面和海报中展示明文长链接。</p>
+            <PosterActions links={content.links} />
           </div>
         </aside>
       </section>

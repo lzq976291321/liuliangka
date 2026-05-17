@@ -109,6 +109,7 @@ export function ContentFactoryClient({ packages }: ContentFactoryClientProps) {
               <div>
                 <span className="tag amber">{link.label}</span>
                 <strong>{link.play}</strong>
+                <small>不展示明文长链接</small>
               </div>
               <button className="button small" onClick={() => copyText(`link-${link.source}`, link.url)} type="button">
                 {copiedId === `link-${link.source}` ? <Check size={14} /> : <Link2 size={14} />}

@@ -94,7 +94,7 @@ export function generateContentPackage(scenario: ScenarioConfig, rankedProducts:
     "",
     riskNote,
     "",
-    `完整对比页：${channels[0]?.url ?? ""}`
+    "完整对比入口：发布时粘贴内容工厂上方复制的渠道链接，不建议在正文里裸露长链接。"
   ].join("\n");
 
   const xhsTitle = `${scenario.keyword}｜先看这 3 张`;
