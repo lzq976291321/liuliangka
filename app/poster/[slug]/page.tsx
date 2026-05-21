@@ -6,6 +6,7 @@ import { PosterActions } from "@/app/poster/[slug]/PosterActions";
 import { RemoteImage } from "@/components/RemoteImage";
 import { generateContentPackage } from "@/lib/content-factory";
 import { getAllProducts } from "@/lib/haoka172";
+import { getRecommendableProducts, isCityCompatible } from "@/lib/product-knowledge";
 import { rankProducts } from "@/lib/recommendation";
 import { getScenario, scenarioConfigs } from "@/lib/scenarios";
 
@@ -37,7 +38,7 @@ export default async function PosterPage({ params }: PosterPageProps) {
     notFound();
   }
 
-  const products = await getAllProducts();
+  const products = getRecommendableProducts(await getAllProducts()).filter((product) => isCityCompatible(product, scenario.context.city));
   const ranked = rankProducts(products, scenario.context);
   const content = generateContentPackage(scenario, ranked);
   const primary = ranked[0]?.product;

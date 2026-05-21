@@ -1,6 +1,7 @@
 import { appendFile, mkdir } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import { reportRecombeeEvent } from "@/lib/recommendation-engine/recombee-events";
 
 export const runtime = "nodejs";
 
@@ -8,6 +9,9 @@ type TrackEvent = {
   event: string;
   productId?: number;
   productName?: string;
+  userId?: string;
+  recommId?: string;
+  engine?: string;
   source?: string;
   path?: string;
   referrer?: string;
@@ -29,6 +33,9 @@ export async function POST(request: Request) {
   };
 
   await sendWebhook(event);
+  await reportRecombeeEvent(event).catch((error) => {
+    console.warn("recombee_event_failed", error instanceof Error ? error.message : String(error));
+  });
   await writeLocalEvent(event);
 
   return NextResponse.json({ ok: true });

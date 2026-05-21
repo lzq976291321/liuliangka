@@ -3,6 +3,7 @@ import { Sparkles } from "lucide-react";
 import { ContentFactoryClient } from "@/app/content/ContentFactoryClient";
 import { generateContentPackage } from "@/lib/content-factory";
 import { getAllProducts } from "@/lib/haoka172";
+import { getRecommendableProducts, isCityCompatible } from "@/lib/product-knowledge";
 import { rankProducts } from "@/lib/recommendation";
 import { scenarioConfigs } from "@/lib/scenarios";
 
@@ -12,8 +13,11 @@ export const metadata: Metadata = {
 };
 
 export default async function ContentPage() {
-  const products = await getAllProducts();
-  const packages = scenarioConfigs.map((scenario) => generateContentPackage(scenario, rankProducts(products, scenario.context)));
+  const products = getRecommendableProducts(await getAllProducts());
+  const packages = scenarioConfigs.map((scenario) => {
+    const scenarioProducts = products.filter((product) => isCityCompatible(product, scenario.context.city));
+    return generateContentPackage(scenario, rankProducts(scenarioProducts, scenario.context));
+  });
 
   return (
     <main className="page">

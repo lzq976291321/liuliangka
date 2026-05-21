@@ -1,13 +1,19 @@
 "use client";
 
 import { Bot, SlidersHorizontal } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { ProductCard } from "@/components/ProductCard";
-import { rankProducts } from "@/lib/recommendation";
-import type { CardProduct, Operator } from "@/lib/types";
+import type { GuideRecommendation } from "@/lib/guide-recommendation";
+import type { Operator } from "@/lib/types";
+import { getBrowserVisitorId } from "@/lib/visitor-id";
 
 type AssistantClientProps = {
-  products: CardProduct[];
+  initialRecommendations: GuideRecommendation[];
+};
+
+type RecommendApiResponse = {
+  ok: boolean;
+  recommendations: GuideRecommendation[];
 };
 
 const cityOptions = [
@@ -25,18 +31,45 @@ const sceneOptions = [
   { label: "直播短视频", value: "live-stream" }
 ];
 
-export function AssistantClient({ products }: AssistantClientProps) {
+export function AssistantClient({ initialRecommendations }: AssistantClientProps) {
   const [city, setCity] = useState("shenzhen");
   const [scene, setScene] = useState("cheap");
   const [budget, setBudget] = useState(39);
   const [dataNeedGB, setDataNeedGB] = useState(180);
   const [operator, setOperator] = useState<Operator | "不限">("不限");
   const [age, setAge] = useState(24);
+  const [ranked, setRanked] = useState(initialRecommendations);
 
-  const ranked = useMemo(
-    () => rankProducts(products, { city, scene, budget, dataNeedGB, operator, age }).slice(0, 4),
-    [age, budget, city, dataNeedGB, operator, products, scene]
-  );
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = window.setTimeout(async () => {
+      const response = await fetch("/api/recommend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          intent: { city, scene, budget, dataNeedGB, operator, age },
+          limit: 4,
+          scenario: "assistant",
+          userId: getBrowserVisitorId()
+        }),
+        signal: controller.signal
+      }).catch(() => undefined);
+
+      if (!response?.ok) {
+        return;
+      }
+
+      const payload = (await response.json()) as RecommendApiResponse;
+      if (payload.ok) {
+        setRanked(payload.recommendations);
+      }
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [age, budget, city, dataNeedGB, operator, scene]);
 
   return (
     <div className="assistant-grid">
@@ -107,8 +140,8 @@ export function AssistantClient({ products }: AssistantClientProps) {
           </div>
         </div>
         <div className="result-stack">
-          {ranked.map(({ product, result }) => (
-            <ProductCard key={product.productID} product={product} reasons={result.reasons} score={result.score} />
+          {ranked.map(({ product, reasons, score }) => (
+            <ProductCard key={product.productID} product={product} reasons={reasons} score={score} />
           ))}
         </div>
       </section>

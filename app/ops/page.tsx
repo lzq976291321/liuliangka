@@ -4,6 +4,8 @@ import Link from "next/link";
 import { BarChart3, ExternalLink, Flame, Link2, Radar, Route as RouteIcon, Signal, Target } from "lucide-react";
 import { channelConfigs, getCampaignUrl } from "@/lib/campaign";
 import { getAllProducts } from "@/lib/haoka172";
+import { getCatalogStats, getRecommendableProducts, isCityCompatible } from "@/lib/product-knowledge";
+import { analyzeProductQuality, getProductQualityStats, groupProductQualityIssues } from "@/lib/product-quality";
 import { rankProducts } from "@/lib/recommendation";
 import { scenarioConfigs } from "@/lib/scenarios";
 
@@ -13,15 +15,19 @@ export const metadata: Metadata = {
 };
 
 export default async function OpsPage() {
-  const products = await getAllProducts();
+  const rawProducts = await getAllProducts();
+  const products = getRecommendableProducts(rawProducts);
+  const stats = getCatalogStats(rawProducts);
   const liveSource = Boolean(process.env.HAOKA172_USER_ID && process.env.HAOKA172_SECRET);
-  const globalRanked = rankProducts(products, { budget: 39, dataNeedGB: 180 }).slice(0, 5);
+  const globalProducts = products.filter((product) => isCityCompatible(product, "shenzhen"));
+  const globalRanked = rankProducts(globalProducts, { city: "shenzhen", budget: 39, dataNeedGB: 180 }).slice(0, 5);
   const topProduct = globalRanked[0];
   const highCommissionCount = products.filter((product) => product.commission >= 200).length;
 
   const launchItems = scenarioConfigs
     .map((scenario) => {
-      const ranked = rankProducts(products, scenario.context).slice(0, 3);
+      const scenarioProducts = products.filter((product) => isCityCompatible(product, scenario.context.city));
+      const ranked = rankProducts(scenarioProducts, scenario.context).slice(0, 3);
       const primary = ranked[0];
       const path = `/liuliangka/${scenario.slug}`;
       const priorityScore = (primary?.result.score ?? 0) + (scenario.slug === "shenzhen" ? 8 : 0) + (scenario.slug === "cheap" ? 6 : 0);
@@ -36,6 +42,12 @@ export default async function OpsPage() {
     })
     .sort((a, b) => b.priorityScore - a.priorityScore);
   const firstLaunchPath = (launchItems[0]?.path ?? "/liuliangka/shenzhen") as Route;
+  const focusProductIds = new Set<number>();
+  globalRanked.forEach((item) => focusProductIds.add(item.product.productID));
+  launchItems.forEach((item) => item.ranked.forEach((ranked) => focusProductIds.add(ranked.product.productID)));
+  const qualityIssues = analyzeProductQuality(rawProducts, { focusProductIds });
+  const qualityStats = getProductQualityStats(qualityIssues);
+  const qualityTodos = groupProductQualityIssues(qualityIssues);
 
   return (
     <main className="page">
@@ -75,13 +87,65 @@ export default async function OpsPage() {
           </div>
           <div className="ops-metric">
             <span>套餐池</span>
-            <strong>{products.length}</strong>
+            <strong>{stats.recommendable}</strong>
+          </div>
+          <div className="ops-metric">
+            <span>已过滤宽带</span>
+            <strong>{stats.broadband}</strong>
           </div>
           <div className="ops-metric">
             <span>高佣候选</span>
             <strong>{highCommissionCount}</strong>
           </div>
+          <div className="ops-metric">
+            <span>高优先级待办</span>
+            <strong>{qualityStats.high}</strong>
+          </div>
         </aside>
+      </section>
+
+      <section className="section">
+        <div className="section-header">
+          <div>
+            <h2 className="section-title">商品质量待办</h2>
+            <p className="section-note">
+              高风险看全量商品；中低风险只盯首页和场景页会进入推荐的候选商品，避免 172 标题型商品制造噪音。
+            </p>
+          </div>
+          <span className="tag red">
+            高 {qualityStats.high} / 中 {qualityStats.medium} / 低 {qualityStats.low}
+          </span>
+        </div>
+        <div className="ops-table-wrap">
+          <table className="ops-table">
+            <thead>
+              <tr>
+                <th>级别</th>
+                <th>商品</th>
+                <th>问题清单</th>
+                <th>下一步</th>
+              </tr>
+            </thead>
+            <tbody>
+              {qualityTodos.slice(0, 12).map((item) => (
+                <tr key={item.productID}>
+                  <td>
+                    <span className={`tag ${item.severity === "high" ? "red" : item.severity === "medium" ? "amber" : ""}`}>
+                      {item.severity === "high" ? "高" : item.severity === "medium" ? "中" : "低"}
+                    </span>
+                  </td>
+                  <td>
+                    <strong>{item.productName}</strong>
+                    <br />
+                    <span className="inline-link">ID {item.productID}</span>
+                  </td>
+                  <td>{item.issues.join(" / ")}</td>
+                  <td>{item.suggestions[0]}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
       <section className="section">

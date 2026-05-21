@@ -29,15 +29,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <span className="brand-mark">卡</span>
                 <span>本地流量卡推荐</span>
               </Link>
-              <nav className="nav" aria-label="主导航">
-                <Link href="/liuliangka/shenzhen">深圳</Link>
-                <Link href="/liuliangka/guangzhou">广州</Link>
-                <Link href="/liuliangka/student">学生党</Link>
-                <Link href="/liuliangka/cheap">低月租</Link>
-                <Link href="/assistant">选号助手</Link>
-                <Link href="/ops">投放工作台</Link>
-                <Link href="/content">内容工厂</Link>
-              </nav>
             </div>
           </header>
           {children}

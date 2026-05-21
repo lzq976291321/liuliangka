@@ -1,10 +1,11 @@
 import type { MetadataRoute } from "next";
 import { getAllProducts } from "@/lib/haoka172";
+import { getRecommendableProducts } from "@/lib/product-knowledge";
 import { scenarioConfigs } from "@/lib/scenarios";
 import { buildSiteUrl } from "@/lib/site";
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const products = await getAllProducts();
+  const products = getRecommendableProducts(await getAllProducts());
 
   return [
     {

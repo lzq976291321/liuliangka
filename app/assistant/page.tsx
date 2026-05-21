@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { AssistantClient } from "@/app/assistant/AssistantClient";
 import { getAllProducts } from "@/lib/haoka172";
+import { getRecommendableProducts } from "@/lib/product-knowledge";
+import { recommendProducts } from "@/lib/recommendation-engine";
 
 export const metadata: Metadata = {
   title: "AI 选号助手",
@@ -8,7 +10,13 @@ export const metadata: Metadata = {
 };
 
 export default async function AssistantPage() {
-  const products = await getAllProducts();
+  const products = getRecommendableProducts(await getAllProducts());
+  const initialRecommendation = await recommendProducts({
+    products,
+    intent: { city: "shenzhen", scene: "cheap", budget: 39, dataNeedGB: 180, operator: "不限", age: 24 },
+    limit: 4,
+    scenario: "assistant"
+  });
 
   return (
     <main className="page">
@@ -16,7 +24,7 @@ export default async function AssistantPage() {
         <div className="heading-block">
           <span className="eyebrow">AI 选号助手</span>
           <h1>输入需求，直接给出推荐顺序。</h1>
-          <p>第一版先用规则评分，等有真实点击和订单数据后，再把点击率、结算率和退单率加入模型。</p>
+          <p>先由商品知识库过滤不可推荐商品，再交给当前推荐引擎排序；未配置第三方时自动使用本地兜底。</p>
         </div>
         <aside className="side-note">
           <h2 className="section-title">推荐逻辑</h2>
@@ -27,7 +35,7 @@ export default async function AssistantPage() {
           </ul>
         </aside>
       </section>
-      <AssistantClient products={products} />
+      <AssistantClient initialRecommendations={initialRecommendation.recommendations} />
     </main>
   );
 }

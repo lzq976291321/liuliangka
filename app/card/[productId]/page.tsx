@@ -5,6 +5,7 @@ import { ProductCard } from "@/components/ProductCard";
 import { RemoteImage } from "@/components/RemoteImage";
 import { TrackButton } from "@/components/TrackButton";
 import { getAllProducts, getProductById } from "@/lib/haoka172";
+import { enrichProduct, getRecommendableProducts } from "@/lib/product-knowledge";
 import { rankProducts, scoreProduct } from "@/lib/recommendation";
 
 type ProductPageProps = {
@@ -12,13 +13,14 @@ type ProductPageProps = {
 };
 
 export async function generateStaticParams() {
-  const products = await getAllProducts();
+  const products = getRecommendableProducts(await getAllProducts());
   return products.map((product) => ({ productId: String(product.productID) }));
 }
 
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
   const { productId } = await params;
-  const product = await getProductById(productId);
+  const rawProduct = await getProductById(productId);
+  const product = rawProduct ? enrichProduct(rawProduct) : undefined;
   if (!product) {
     return {};
   }
@@ -32,12 +34,13 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
 
 export default async function ProductPage({ params }: ProductPageProps) {
   const { productId } = await params;
-  const product = await getProductById(productId);
+  const rawProduct = await getProductById(productId);
+  const product = rawProduct ? enrichProduct(rawProduct) : undefined;
   if (!product) {
     notFound();
   }
 
-  const products = await getAllProducts();
+  const products = getRecommendableProducts(await getAllProducts());
   const scored = scoreProduct(product, { budget: 39, dataNeedGB: 180 });
   const related = rankProducts(
     products.filter((item) => item.productID !== product.productID),
@@ -157,7 +160,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
               </div>
             </dl>
             <div style={{ marginTop: 16 }}>
-              <TrackButton productId={product.productID} productName={product.productName} href={product.applyUrl} source="product_detail" />
+              <TrackButton productId={product.productID} productName={product.productName} href={`/order/${product.productID}`} source="product_detail" />
             </div>
           </section>
 

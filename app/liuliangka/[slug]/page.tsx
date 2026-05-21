@@ -4,6 +4,7 @@ import { ArrowRight, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
 import { ProductCard } from "@/components/ProductCard";
 import { getAllProducts } from "@/lib/haoka172";
+import { getRecommendableProducts, isCityCompatible } from "@/lib/product-knowledge";
 import { rankProducts } from "@/lib/recommendation";
 import { getScenario, scenarioConfigs } from "@/lib/scenarios";
 
@@ -36,7 +37,7 @@ export default async function ScenarioPage({ params }: ScenarioPageProps) {
     notFound();
   }
 
-  const products = await getAllProducts();
+  const products = getRecommendableProducts(await getAllProducts()).filter((product) => isCityCompatible(product, scenario.context.city));
   const ranked = rankProducts(products, scenario.context).slice(0, 5);
 
   return (
