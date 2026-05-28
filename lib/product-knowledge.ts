@@ -32,11 +32,18 @@ function cleanConsumerText(value: string) {
   return value
     .split(/(?<=[。；;])|(?<=，)|(?<=,)/)
     .map((part) => part.trim())
-    .filter((part) => part && !/(前端|禁止.*字眼|佣金|返佣|结算|三无|三照|渠道|原产品标记|审核失败|更改.*卡|补贴)/.test(part))
+    .filter((part) => part && !/(前端|禁止.*字眼|佣金|返佣|结算|三无|三照|渠道|原产品标记|审核失败|更改|补贴)/.test(part))
     .join("")
     .replace(/，。/g, "。")
     .replace(/,{2,}/g, ",")
     .replace(/[，,；;]+$/g, "")
+    .trim();
+}
+
+function cleanProductName(value: string) {
+  return value
+    .replace(/^【新】/, "")
+    .replace(/\s*[|｜]\s*更改.*$/g, "")
     .trim();
 }
 
@@ -112,6 +119,7 @@ export function enrichProduct(product: CardProduct): CardProduct {
 
   return {
     ...product,
+    productName: cleanProductName(product.productName),
     taocan: cleanConsumerText(product.taocan),
     rule: cleanConsumerText(product.rule),
     monthlyRent,
