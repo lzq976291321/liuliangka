@@ -28,6 +28,17 @@ function productText(product: CardProduct) {
   ].join(" ");
 }
 
+function cleanConsumerText(value: string) {
+  return value
+    .split(/(?<=[。；;])|(?<=，)|(?<=,)/)
+    .map((part) => part.trim())
+    .filter((part) => part && !/(前端|禁止.*字眼|佣金|返佣|结算|三无|渠道充值|原产品标记|审核失败)/.test(part))
+    .join("")
+    .replace(/，。/g, "。")
+    .replace(/,{2,}/g, ",")
+    .trim();
+}
+
 const cityProvince: Record<string, string> = {
   shenzhen: "广东",
   guangzhou: "广东",
@@ -100,6 +111,8 @@ export function enrichProduct(product: CardProduct): CardProduct {
 
   return {
     ...product,
+    taocan: cleanConsumerText(product.taocan),
+    rule: cleanConsumerText(product.rule),
     monthlyRent,
     dataGB: data.total,
     generalDataGB: product.generalDataGB ?? data.general,
