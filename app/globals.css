@@ -641,15 +641,77 @@ img {
   background: #fff;
 }
 
-.order-frame-status {
+.order-frame-skeleton {
   position: absolute;
   inset: 0;
   display: grid;
-  place-items: center;
+  align-content: start;
+  gap: 18px;
+  padding: clamp(18px, 4vw, 38px);
+  background:
+    linear-gradient(90deg, rgba(23, 21, 18, 0.03) 1px, transparent 1px) 0 0 / 36px 36px,
+    #fff;
   color: var(--muted);
   font-family: ui-sans-serif, system-ui, sans-serif;
-  font-size: 14px;
-  font-weight: 900;
+  z-index: 1;
+}
+
+.order-skeleton-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.order-skeleton-top span {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: linear-gradient(90deg, #eee7dd, #faf7f0, #eee7dd);
+  background-size: 220% 100%;
+  animation: skeleton-sweep 1.15s ease-in-out infinite;
+}
+
+.order-skeleton-top strong {
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.order-skeleton-form {
+  display: grid;
+  gap: 12px;
+  width: min(520px, 100%);
+}
+
+.order-skeleton-form i,
+.order-skeleton-button {
+  display: block;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #eee7dd, #faf7f0, #eee7dd);
+  background-size: 220% 100%;
+  animation: skeleton-sweep 1.15s ease-in-out infinite;
+}
+
+.order-skeleton-form i {
+  height: 46px;
+}
+
+.order-skeleton-form i:nth-child(2) {
+  width: 84%;
+}
+
+.order-skeleton-form i:nth-child(3) {
+  width: 92%;
+}
+
+.order-skeleton-form i:nth-child(4) {
+  width: 70%;
+}
+
+.order-skeleton-button {
+  width: min(220px, 56%);
+  height: 44px;
+  margin-top: 2px;
+  border-radius: 999px;
 }
 
 .order-iframe {
@@ -659,12 +721,28 @@ img {
   min-height: min(760px, calc(100dvh - 180px));
   border: 0;
   background: #fff;
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.order-iframe.loaded {
+  opacity: 1;
 }
 
 .order-modal .order-iframe-shell,
 .order-modal .order-iframe {
   height: 100%;
   min-height: 0;
+}
+
+@keyframes skeleton-sweep {
+  0% {
+    background-position: 120% 0;
+  }
+
+  100% {
+    background-position: -120% 0;
+  }
 }
 
 .detail-layout {

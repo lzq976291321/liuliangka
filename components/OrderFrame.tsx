@@ -47,10 +47,24 @@ export function OrderFrame({ src, title }: OrderFrameProps) {
 
   return (
     <section className="order-iframe-shell">
-      {!loaded ? <div className="order-frame-status">正在加载办理页</div> : null}
+      {!loaded ? (
+        <div className="order-frame-skeleton" aria-live="polite">
+          <div className="order-skeleton-top">
+            <span />
+            <strong>正在加载办理页</strong>
+          </div>
+          <div className="order-skeleton-form">
+            <i />
+            <i />
+            <i />
+            <i />
+          </div>
+          <div className="order-skeleton-button" />
+        </div>
+      ) : null}
       <iframe
         allow="clipboard-write; payment; fullscreen"
-        className="order-iframe"
+        className={`order-iframe${loaded ? " loaded" : ""}`}
         key={frameSrc}
         onLoad={() => setLoaded(true)}
         referrerPolicy="no-referrer-when-downgrade"
