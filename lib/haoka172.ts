@@ -2,7 +2,6 @@ import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { deriveCities, deriveScenes, detectProductCategory, parseCallMinutes, parseData, parseIsLongTerm, parseMonthlyRent, parsePriceTime } from "@/lib/product-parser";
-import { sampleProducts } from "@/lib/sample-products";
 import type { CardProduct, Operator } from "@/lib/types";
 
 type Product172 = {
@@ -90,7 +89,7 @@ function retryDelayMs(response: Response | undefined, attempt: number) {
 }
 
 function normalize172Product(product: Product172): CardProduct {
-  const productName = product.productName || `172商品 ${product.productID}`;
+  const productName = product.productName || `套餐 ${product.productID}`;
   const taocan = product.Taocan || product.taocan || "";
   const rule = product.Rule || product.rule || "";
   const rawPriceTime = product.PriceTime || product.priceTime || "";
@@ -161,12 +160,12 @@ function normalize172Product(product: Product172): CardProduct {
       isLongTerm
     }),
     cities: deriveCities(availabilityText),
-    warnings: ["接口商品需二次补充套餐标签、佣金和场景信息"],
+    warnings: ["套餐信息可能不完整，办理前请以办理页为准"],
     applyUrl: product.netAddr || "#apply-panel"
   };
 }
 
-async function readProductsFromSnapshot(productId: string): Promise<CardProduct[] | undefined> {
+async function readProductsFromSnapshot(productId: string, options: { allowStale?: boolean } = {}): Promise<CardProduct[] | undefined> {
   try {
     const snapshot = JSON.parse(await readFile(SNAPSHOT_PATH, "utf8")) as {
       syncedAt?: string;
@@ -181,7 +180,7 @@ async function readProductsFromSnapshot(productId: string): Promise<CardProduct[
     const syncedAtMs = snapshot.syncedAt ? Date.parse(snapshot.syncedAt) : 0;
     const isFresh = syncedAtMs > 0 && Date.now() - syncedAtMs <= getSnapshotMaxAgeMs();
 
-    if (!isFresh && process.env.HAOKA172_ALLOW_STALE_SNAPSHOT !== "1") {
+    if (!isFresh && !options.allowStale && process.env.HAOKA172_ALLOW_STALE_SNAPSHOT !== "1") {
       return undefined;
     }
 
@@ -239,7 +238,7 @@ async function fetchProductsFrom172(productId: string): Promise<CardProduct[]> {
   const secret = process.env.HAOKA172_SECRET;
 
   if (!userId || !secret) {
-    return sampleProducts;
+    return (await readProductsFromSnapshot(productId, { allowStale: true })) ?? [];
   }
 
   let lastResponse: Response | undefined;
@@ -260,7 +259,7 @@ async function fetchProductsFrom172(productId: string): Promise<CardProduct[]> {
 
       const payload = (await response.json()) as ProductsResponse;
       if (payload.code !== 0 || !payload.data?.length) {
-        lastError = new Error(`172 业务失败：code=${payload.code} message=${payload.message}`);
+        lastError = new Error(`商品接口业务失败：code=${payload.code} message=${payload.message}`);
         break;
       }
 
@@ -282,7 +281,7 @@ async function fetchProductsFrom172(productId: string): Promise<CardProduct[]> {
       error: lastError instanceof Error ? lastError.message : String(lastError ?? "")
     })
   );
-  return sampleProducts;
+  return (await readProductsFromSnapshot(productId, { allowStale: true })) ?? [];
 }
 
 export async function getProductsFrom172(productId = ""): Promise<CardProduct[]> {
@@ -304,7 +303,7 @@ export async function getProductsFrom172(productId = ""): Promise<CardProduct[]>
   }
 
   if (process.env.HAOKA172_DISABLE_LIVE_FETCH === "1") {
-    return sampleProducts;
+    return (await readProductsFromSnapshot(productId, { allowStale: true })) ?? [];
   }
 
   const pending = productInFlight.get(cacheKey);
@@ -314,7 +313,7 @@ export async function getProductsFrom172(productId = ""): Promise<CardProduct[]>
 
   const request = fetchProductsFrom172(productId)
     .then((products) => {
-      const result = products.length ? products : cached?.products ?? sampleProducts;
+      const result = products.length ? products : cached?.products ?? [];
       productCache.set(cacheKey, {
         products: result,
         expiresAt: Date.now() + getCacheTtlMs()
@@ -323,7 +322,7 @@ export async function getProductsFrom172(productId = ""): Promise<CardProduct[]>
     })
     .catch((error) => {
       console.warn("haoka172_cache_fallback", error instanceof Error ? error.message : String(error));
-      return cached?.products ?? sampleProducts;
+      return cached?.products ?? [];
     })
     .finally(() => {
       productInFlight.delete(cacheKey);

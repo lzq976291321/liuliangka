@@ -311,7 +311,7 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
 
   return (
     <section className="catalog-shell">
-      <h1 className="sr-only">流量卡筛选办理</h1>
+      <h1 className="sr-only">流量卡办理</h1>
       <div className="catalog-toolbar">
         <div className="catalog-search-line">
           <label className="catalog-search">
@@ -452,7 +452,6 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
                 <div className="catalog-card-meta">
                   <span>{product.operator}</span>
                   <span>{product.area}</span>
-                  <span>ID {product.productID}</span>
                 </div>
                 <h2>{product.productName}</h2>
                 <div className="catalog-card-facts" aria-label="套餐核心参数">
@@ -476,7 +475,7 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
                   </span>
                   <span>{product.numberSel > 0 ? "支持选号" : "不选号"}</span>
                 </div>
-                <p>{product.taocan || product.rule || "172 未返回完整套餐正文，办理前以详情页为准。"}</p>
+                <p>{product.taocan || product.rule || "套餐详情请以办理页展示为准，办理前重点核对优惠期、首充和地区限制。"}</p>
                 <div className="catalog-card-actions">
                   <button className="button green" onClick={() => openOrder(product)} type="button">
                     <ExternalLink size={17} />
@@ -506,15 +505,15 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
           <div className="order-modal-panel">
             <header className="order-modal-head">
               <div>
-                <span>商品 ID {selectedProduct.productID}</span>
+                <span>办理前请核对套餐规则</span>
                 <h2>{selectedProduct.productName}</h2>
                 <p>
                   {selectedProduct.operator} / {selectedProduct.area} / {selectedProduct.priceTime}
                 </p>
               </div>
               <div className="order-modal-actions">
-                <a className="button small" href={selectedProduct.orderUrl}>
-                  外部打开
+                <a className="button small" href={selectedProduct.orderUrl} rel="noreferrer" target="_blank">
+                  新窗口打开
                 </a>
                 <button className="icon-button" onClick={() => setSelectedProduct(undefined)} type="button" aria-label="关闭办理弹窗">
                   <X size={20} />

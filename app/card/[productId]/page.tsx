@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AlertTriangle, BadgeCheck, Clock, MapPinned, ShieldCheck } from "lucide-react";
 import { ProductCard } from "@/components/ProductCard";
 import { RemoteImage } from "@/components/RemoteImage";
 import { TrackButton } from "@/components/TrackButton";
-import { getAllProducts, getProductById } from "@/lib/haoka172";
+import { getAllProducts, getOrderLinks, getProductById } from "@/lib/catalog-source";
 import { enrichProduct, getRecommendableProducts } from "@/lib/product-knowledge";
 import { rankProducts, scoreProduct } from "@/lib/recommendation";
 
@@ -12,9 +13,11 @@ type ProductPageProps = {
   params: Promise<{ productId: string }>;
 };
 
-export async function generateStaticParams() {
-  const products = getRecommendableProducts(await getAllProducts());
-  return products.map((product) => ({ productId: String(product.productID) }));
+export const dynamic = "force-dynamic";
+
+function toNumber(value?: string) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? Math.round(numeric) : undefined;
 }
 
 export async function generateMetadata({ params }: ProductPageProps): Promise<Metadata> {
@@ -27,7 +30,7 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
 
   return {
     title: `${product.productName}套餐详情`,
-    description: `${product.productName}：${product.monthlyRent}元/月，${product.dataGB}G，总结月租、流量、办理限制、禁发区域和避坑说明。`,
+    description: `${product.productName}：${product.monthlyRent}元/月，整理通用流量、办理限制、禁发区域和注意事项。`,
     keywords: [product.productName, `${product.operator}流量卡`, "流量卡套餐详情"]
   };
 }
@@ -40,11 +43,25 @@ export default async function ProductPage({ params }: ProductPageProps) {
     notFound();
   }
 
-  const products = getRecommendableProducts(await getAllProducts());
+  const [allProducts, orderLinks] = await Promise.all([getAllProducts(), getOrderLinks()]);
+  const products = getRecommendableProducts(allProducts).filter((item) => {
+    const link = orderLinks.get(item.productID);
+    return Boolean(link?.shareUrl && link.pudId && link.userId);
+  });
   const scored = scoreProduct(product, { budget: 39, dataNeedGB: 180 });
+  const orderLink = orderLinks.get(product.productID);
+  if (!orderLink?.shareUrl || !orderLink.pudId || !orderLink.userId) {
+    notFound();
+  }
+
+  const monthlyRent = toNumber(orderLink.monthlyRent) ?? product.monthlyRent;
+  const generalDataGB = toNumber(orderLink.generalDataGB) ?? product.generalDataGB ?? product.dataGB;
+  const callMinutes = toNumber(orderLink.callMinutes) ?? product.callMinutes;
+  const age1 = orderLink.age1 ?? product.age1;
+  const age2 = orderLink.age2 ?? product.age2;
   const related = rankProducts(
     products.filter((item) => item.productID !== product.productID),
-    { scene: product.scenes[0], city: product.cities[0], budget: product.monthlyRent }
+    { scene: product.scenes[0], city: product.cities[0], budget: monthlyRent }
   ).slice(0, 3);
 
   return (
@@ -57,10 +74,10 @@ export default async function ProductPage({ params }: ProductPageProps) {
               <div className="product-topline">
                 <span className="tag green">{product.operator}</span>
                 <span className="tag amber">{product.priceTime}</span>
-                <span className="tag">推荐 {scored.score}</span>
+                <span className="tag">{product.area}</span>
               </div>
               <h1>{product.productName}</h1>
-              <p className="hero-copy">{product.taocan}</p>
+              <p className="hero-copy">{product.taocan || "办理前请核对月租、通用流量、优惠期、首充和地区限制。"}</p>
             </div>
           </article>
 
@@ -68,21 +85,21 @@ export default async function ProductPage({ params }: ProductPageProps) {
             <div className="section-header">
               <div>
                 <h2 className="section-title">套餐详情</h2>
-                <p className="section-note">从用户决策角度拆解月租、流量、年龄、选号和办理地区。</p>
+                <p className="section-note">先看月租、通用流量、通话、年龄和办理地区，避免只看标题下单。</p>
               </div>
               <BadgeCheck size={30} />
             </div>
             <div className="spec-row">
               <div className="spec">
-                <strong>{product.monthlyRent}元</strong>
+                <strong>{monthlyRent}元</strong>
                 <span>月租</span>
               </div>
               <div className="spec">
-                <strong>{product.dataGB}G</strong>
-                <span>总流量</span>
+                <strong>{generalDataGB}G</strong>
+                <span>通用流量</span>
               </div>
               <div className="spec">
-                <strong>{product.callMinutes}</strong>
+                <strong>{callMinutes}</strong>
                 <span>通话分钟</span>
               </div>
             </div>
@@ -92,7 +109,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
             <div className="section-header">
               <div>
                 <h2 className="section-title">办理区域</h2>
-                <p className="section-note">SKU 对应 172 商品的办理区域字段，后续可直接由接口同步。</p>
+                <p className="section-note">不同地区可能有不同办理规则，提交前请再次核对收货地和归属地限制。</p>
               </div>
               <MapPinned size={30} />
             </div>
@@ -109,23 +126,24 @@ export default async function ProductPage({ params }: ProductPageProps) {
           <section className="detail-panel">
             <div className="section-header">
               <div>
-                <h2 className="section-title">结算和规则</h2>
-                <p className="section-note">这些字段会影响你后台选品，不建议全部暴露成强营销文案。</p>
+                <h2 className="section-title">办理规则</h2>
+                <p className="section-note">这些规则会影响实际资费和能否办理，提交资料前要看清楚。</p>
               </div>
               <Clock size={30} />
             </div>
             <ul className="notice-list">
-              <li>{product.rule}</li>
-              <li>返佣类型：{product.backMoneyType}，样例佣金：{product.commission || "待补充"} 元。</li>
-              <li>年龄范围：{product.age1}-{product.age2} 岁。</li>
+              {product.rule ? <li>{product.rule}</li> : null}
+              <li>{product.firstRechargeAmount ? `首充要求：${product.firstRechargeAmount} 元。` : "首充要求以办理页展示为准。"}</li>
+              <li>年龄范围：{age1}-{age2} 岁。</li>
+              <li>{product.numberSel > 0 ? "支持选号，具体可选号码以办理页为准。" : "暂不支持选号。"}</li>
             </ul>
           </section>
 
           <section className="detail-panel">
             <div className="section-header">
               <div>
-                <h2 className="section-title">避坑说明</h2>
-                <p className="section-note">转化页内保留风险提醒，比单独做黑榜更稳。</p>
+                <h2 className="section-title">办理前确认</h2>
+                <p className="section-note">重点确认不能办的地区、优惠期和套餐外资费。</p>
               </div>
               <AlertTriangle size={30} />
             </div>
@@ -140,15 +158,15 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
         <aside className="sticky-aside">
           <section className="detail-panel" id="apply-panel">
-            <h2 className="section-title">办理入口</h2>
+            <h2 className="section-title">立即办理</h2>
             <dl className="kv-list">
               <div className="kv">
-                <dt>推荐分</dt>
-                <dd>{scored.score}</dd>
+                <dt>月租</dt>
+                <dd>{monthlyRent}元</dd>
               </div>
               <div className="kv">
-                <dt>选号</dt>
-                <dd>{product.numberSel === 0 ? "不支持" : "支持"}</dd>
+                <dt>通用流量</dt>
+                <dd>{generalDataGB}G</dd>
               </div>
               <div className="kv">
                 <dt>归属地</dt>
@@ -160,7 +178,13 @@ export default async function ProductPage({ params }: ProductPageProps) {
               </div>
             </dl>
             <div style={{ marginTop: 16 }}>
-              <TrackButton productId={product.productID} productName={product.productName} href={`/order/${product.productID}`} source="product_detail" />
+              {orderLink?.shareUrl ? (
+                <TrackButton productId={product.productID} productName={product.productName} href={orderLink.shareUrl} source="product_detail" label="去办理" />
+              ) : (
+                <Link className="button small" href="/">
+                  返回列表重新选择
+                </Link>
+              )}
             </div>
           </section>
 

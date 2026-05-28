@@ -104,7 +104,7 @@ function toOrderLink(item: ProductEnCatalogItem): Haoka172OrderLink | undefined 
 
   return {
     productID,
-    productName: item.name || `172商品 ${productID}`,
+    productName: item.name || `套餐 ${productID}`,
     shareUrl: parsed.shareUrl,
     pudId: parsed.pudId,
     userId: parsed.userId,
@@ -170,16 +170,16 @@ async function fetchOrderCatalog(userId: string) {
     }
 
     if (!response) {
-      throw lastError instanceof Error ? lastError : new Error("172 前台商品链接接口连接失败");
+      throw lastError instanceof Error ? lastError : new Error("办理链接接口连接失败");
     }
 
     if (!response.ok) {
-      throw new Error(`172 前台商品链接接口失败：HTTP ${response.status}`);
+      throw new Error(`办理链接接口失败：HTTP ${response.status}`);
     }
 
     const payload = (await response.json()) as ProductEnCatalogResponse;
     if (!Array.isArray(payload.data)) {
-      throw new Error(`172 前台商品链接接口失败：${payload.message || "无商品数据"}`);
+      throw new Error(`办理链接接口失败：${payload.message || "无商品数据"}`);
     }
 
     const links = new Map<number, Haoka172OrderLink>();

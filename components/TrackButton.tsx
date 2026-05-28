@@ -10,11 +10,11 @@ type TrackButtonProps = {
   href: string;
   source: string;
   label?: string;
-  recommId?: string;
-  engine?: string;
 };
 
-export function TrackButton({ productId, productName, href, source, label = "获取办理入口", recommId, engine }: TrackButtonProps) {
+export function TrackButton({ productId, productName, href, source, label = "获取办理入口" }: TrackButtonProps) {
+  const isExternal = /^https?:\/\//.test(href);
+
   function handleClick(event: MouseEvent<HTMLAnchorElement>) {
     const query = new URLSearchParams(window.location.search);
     const payload = JSON.stringify({
@@ -22,8 +22,6 @@ export function TrackButton({ productId, productName, href, source, label = "获
       productId,
       productName,
       source,
-      recommId,
-      engine,
       userId: getBrowserVisitorId(),
       path: window.location.pathname,
       referrer: document.referrer || undefined,
@@ -51,7 +49,7 @@ export function TrackButton({ productId, productName, href, source, label = "获
   }
 
   return (
-    <a className="button green" href={href} onClick={handleClick}>
+    <a className="button green" href={href} onClick={handleClick} rel={isExternal ? "noreferrer" : undefined} target={isExternal ? "_blank" : undefined}>
       <ExternalLink size={17} />
       {label}
     </a>

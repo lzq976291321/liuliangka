@@ -77,7 +77,7 @@ function detectProductCategory(text) {
 
 function normalizeProduct(raw) {
   const productID = Number(raw.productID);
-  const productName = raw.productName || `172商品 ${productID}`;
+  const productName = raw.productName || `套餐 ${productID}`;
   const skus = Array.isArray(raw.Skus) ? raw.Skus : [];
   const text = [
     productName,
@@ -174,7 +174,7 @@ async function fetchProductsFrom172() {
         continue;
       }
 
-      throw new Error(`172 同步失败：HTTP ${response.status}，code=${payload?.code}，message=${payload?.message}`);
+      throw new Error(`商品同步失败：HTTP ${response.status}，code=${payload?.code}，message=${payload?.message}`);
     } catch (error) {
       if (attempt < MAX_RETRIES) {
         await sleep(retryDelayMs(undefined, attempt));
@@ -186,7 +186,7 @@ async function fetchProductsFrom172() {
     }
   }
 
-  throw new Error("172 同步失败：超过最大重试次数");
+  throw new Error("商品同步失败：超过最大重试次数");
 }
 
 async function readSnapshot() {
@@ -342,7 +342,7 @@ async function main() {
     console.log("上次同步:", previous.syncedAt);
     console.log("已间隔秒数:", elapsedSeconds);
     console.log("最小间隔秒数:", SYNC_MIN_INTERVAL_SECONDS);
-    console.log("强制同步:", "npm run sync:haoka172 -- --force");
+    console.log("强制同步:", "npm run sync:products -- --force");
     return;
   }
 
@@ -357,7 +357,7 @@ async function main() {
   const currentCategoryCount = countBy(Object.fromEntries(normalizedProducts.map((product) => [product.productID, product])), "category");
   const statusCount = countBy(snapshot.products, "status");
 
-  console.log("172 同步完成");
+  console.log("商品同步完成");
   console.log("本次返回商品:", normalizedProducts.length);
   console.log("当前品类:", JSON.stringify(currentCategoryCount));
   console.log("历史状态:", JSON.stringify(statusCount));

@@ -39,52 +39,52 @@ export const productOverrides: Record<number, ProductOverride> = {
   1906: {
     category: "mobile-card",
     hidden: true,
-    warnings: ["172 未返回套餐正文，先不进入导购推荐"]
+    warnings: ["套餐正文不完整，暂不推荐办理"]
   },
   1911: {
     category: "mobile-card",
     hidden: true,
-    warnings: ["172 未返回套餐正文，先不进入导购推荐"]
+    warnings: ["套餐正文不完整，暂不推荐办理"]
   },
   1912: {
     category: "mobile-card",
     hidden: true,
-    warnings: ["172 未返回套餐正文，先不进入导购推荐"]
+    warnings: ["套餐正文不完整，暂不推荐办理"]
   },
   1913: {
     category: "mobile-card",
     hidden: true,
-    warnings: ["172 未返回套餐正文，先不进入导购推荐"]
+    warnings: ["套餐正文不完整，暂不推荐办理"]
   },
   1966: {
     category: "mobile-card",
     hidden: true,
-    warnings: ["172 未返回套餐正文，先不进入导购推荐"]
+    warnings: ["套餐正文不完整，暂不推荐办理"]
   },
   1967: {
     category: "mobile-card",
     hidden: true,
-    warnings: ["172 未返回套餐正文，先不进入导购推荐"]
+    warnings: ["套餐正文不完整，暂不推荐办理"]
   },
   1968: {
     category: "mobile-card",
     hidden: true,
-    warnings: ["172 未返回套餐正文，先不进入导购推荐"]
+    warnings: ["套餐正文不完整，暂不推荐办理"]
   },
   1969: {
     category: "mobile-card",
     hidden: true,
-    warnings: ["172 未返回套餐正文，先不进入导购推荐"]
+    warnings: ["套餐正文不完整，暂不推荐办理"]
   },
   2239: {
     category: "mobile-card",
     hidden: true,
-    warnings: ["172 未返回套餐正文，先不进入导购推荐"]
+    warnings: ["套餐正文不完整，暂不推荐办理"]
   },
   2284: {
     category: "mobile-card",
     hidden: true,
-    warnings: ["172 未返回套餐正文，先不进入导购推荐"]
+    warnings: ["套餐正文不完整，暂不推荐办理"]
   }
 };
 

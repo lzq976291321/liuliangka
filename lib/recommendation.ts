@@ -67,11 +67,6 @@ export function scoreProduct(product: CardProduct, context: RecommendationContex
     reasons.push("支持选号");
   }
 
-  if (product.commission >= 200) {
-    score += 5;
-    reasons.push("高佣优先测试");
-  }
-
   score -= Math.min(10, product.disableArea.length * 2);
 
   return {
