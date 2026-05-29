@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   description: "按月租、通用流量、地区、运营商筛选当前可办理流量卡，办理前请核对套餐规则和地区限制。"
 };
 
-export const dynamic = "force-dynamic";
+export const dynamic = "force-static";
 
 function toNumber(value?: string) {
   const numeric = Number(value);
@@ -29,7 +29,20 @@ export default async function HomePage() {
 
     return [
       {
-        ...product,
+        productID: product.productID,
+        productName: product.productName,
+        imageUrl: product.littlepicture || product.mainPic,
+        operator: product.operator,
+        category: product.category,
+        area: product.area,
+        taocan: product.taocan,
+        rule: product.rule,
+        priceTime: product.priceTime,
+        backMoneyType: product.backMoneyType,
+        isLongTerm: product.isLongTerm,
+        dataGB: product.dataGB,
+        firstRechargeAmount: product.firstRechargeAmount,
+        numberSel: product.numberSel,
         monthlyRent: toNumber(orderLink.monthlyRent) ?? product.monthlyRent,
         generalDataGB: toNumber(orderLink.generalDataGB) ?? product.generalDataGB,
         directedDataGB: toNumber(orderLink.directedDataGB) ?? product.directedDataGB,

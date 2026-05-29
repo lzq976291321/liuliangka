@@ -21,6 +21,9 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="zh-CN">
+      <head>
+        <link rel="preconnect" href="https://haokaapi.lot-ml.com" />
+      </head>
       <body>
         <div className="site-shell">
           <header className="topbar">

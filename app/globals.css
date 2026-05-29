@@ -546,6 +546,31 @@ img {
   margin-top: 2px;
 }
 
+.catalog-load-more {
+  justify-self: center;
+  min-height: 42px;
+  border: 1px solid var(--ink);
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--paper);
+  cursor: pointer;
+  padding: 9px 18px;
+  font-family: ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.remote-image-placeholder {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background:
+    linear-gradient(90deg, rgba(23, 21, 18, 0.05), rgba(255, 253, 248, 0.55), rgba(23, 21, 18, 0.05)),
+    #e9e2d6;
+  background-size: 220% 100%;
+  animation: skeleton-sweep 1.15s ease-in-out infinite;
+}
+
 .catalog-empty {
   display: grid;
   justify-items: start;
@@ -968,12 +993,35 @@ img {
     grid-template-columns: 1fr;
   }
 
+  .catalog-card {
+    display: grid;
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+
   .catalog-card-media {
-    aspect-ratio: 1.52 / 1;
+    min-height: 100%;
+    aspect-ratio: auto;
+  }
+
+  .catalog-card-body {
+    gap: 8px;
+    padding: 10px;
   }
 
   .catalog-card h2 {
-    font-size: 19px;
+    font-size: 17px;
+  }
+
+  .catalog-card-facts {
+    gap: 5px;
+  }
+
+  .catalog-card-facts span {
+    padding: 6px 5px;
+  }
+
+  .catalog-card p {
+    display: none;
   }
 
   .order-modal {

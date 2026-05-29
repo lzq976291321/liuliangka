@@ -7,7 +7,29 @@ import { RemoteImage } from "@/components/RemoteImage";
 import type { CardProduct, ProductCategory } from "@/lib/types";
 import { getBrowserVisitorId } from "@/lib/visitor-id";
 
-export type CatalogProduct = CardProduct & {
+export type CatalogProduct = Pick<
+  CardProduct,
+  | "productID"
+  | "productName"
+  | "operator"
+  | "category"
+  | "area"
+  | "taocan"
+  | "rule"
+  | "priceTime"
+  | "backMoneyType"
+  | "isLongTerm"
+  | "monthlyRent"
+  | "dataGB"
+  | "generalDataGB"
+  | "directedDataGB"
+  | "callMinutes"
+  | "firstRechargeAmount"
+  | "age1"
+  | "age2"
+  | "numberSel"
+> & {
+  imageUrl: string;
   orderUrl: string;
 };
 
@@ -17,6 +39,8 @@ type ProductCatalogClientProps = {
 
 const operatorOptions = ["全部", "移动", "联通", "电信", "广电"] as const;
 const allOption = "全部";
+const initialVisibleCount = 48;
+const visibleCountStep = 48;
 
 const priceOptions = [
   { label: "全部", value: "all" },
@@ -197,6 +221,7 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
   const [term, setTerm] = useState<(typeof termOptions)[number]["value"]>("all");
   const [ageGroup, setAgeGroup] = useState<(typeof ageOptions)[number]["value"]>("all");
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | undefined>();
+  const [visibleCount, setVisibleCount] = useState(initialVisibleCount);
   const catalogProducts = useMemo(() => products.filter((product) => product.category === "mobile-card"), [products]);
   const indexedProducts = useMemo(() => catalogProducts.map((product) => ({ product, searchText: buildSearchText(product) })), [catalogProducts]);
   const areaOptions = useMemo(() => {
@@ -267,12 +292,18 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
       return [product];
     });
   }, [ageGroup, area, dataBand, indexedProducts, keyword, operator, priceBand, term]);
+  const visibleProducts = useMemo(() => filteredProducts.slice(0, visibleCount), [filteredProducts, visibleCount]);
+  const hasMoreProducts = visibleProducts.length < filteredProducts.length;
 
   useEffect(() => {
     if (!areaOptions.includes(area)) {
       setArea(allOption);
     }
   }, [area, areaOptions]);
+
+  useEffect(() => {
+    setVisibleCount(initialVisibleCount);
+  }, [ageGroup, area, dataBand, keyword, operator, priceBand, term]);
 
   useEffect(() => {
     if (!selectedProduct) {
@@ -437,58 +468,69 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
       </div>
 
       <div className="catalog-count">
-        当前显示 <strong>{filteredProducts.length}</strong> 个可办理商品
+        当前显示 <strong>{visibleProducts.length}</strong> / {filteredProducts.length} 个可办理商品
       </div>
 
       {filteredProducts.length ? (
-        <div className="catalog-grid">
-          {filteredProducts.map((product) => (
-            <article className="catalog-card" key={product.productID}>
-              <div className="catalog-card-media">
-                <RemoteImage src={product.mainPic} alt={product.productName} />
-                <span>{getCategoryLabel(product.category)}</span>
-              </div>
-              <div className="catalog-card-body">
-                <div className="catalog-card-meta">
-                  <span>{product.operator}</span>
-                  <span>{product.area}</span>
+        <>
+          <div className="catalog-grid">
+            {visibleProducts.map((product, index) => (
+              <article className="catalog-card" key={product.productID}>
+                <div className="catalog-card-media">
+                  <RemoteImage
+                    src={product.imageUrl}
+                    alt={product.productName}
+                    priority={index === 0 && !hasActiveFilter}
+                  />
+                  <span>{getCategoryLabel(product.category)}</span>
                 </div>
-                <h2>{product.productName}</h2>
-                <div className="catalog-card-facts" aria-label="套餐核心参数">
-                  <span>
-                    <b>{product.monthlyRent}元</b>
-                    <small>月租</small>
-                  </span>
-                  <span>
-                    <b>{getGeneralDataGB(product)}G</b>
-                    <small>通用</small>
-                  </span>
-                  <span>
-                    <b>{matchesTerm(product, "long") ? "长期" : "优惠期"}</b>
-                    <small>周期</small>
-                  </span>
+                <div className="catalog-card-body">
+                  <div className="catalog-card-meta">
+                    <span>{product.operator}</span>
+                    <span>{product.area}</span>
+                  </div>
+                  <h2>{product.productName}</h2>
+                  <div className="catalog-card-facts" aria-label="套餐核心参数">
+                    <span>
+                      <b>{product.monthlyRent}元</b>
+                      <small>月租</small>
+                    </span>
+                    <span>
+                      <b>{getGeneralDataGB(product)}G</b>
+                      <small>通用</small>
+                    </span>
+                    <span>
+                      <b>{matchesTerm(product, "long") ? "长期" : "优惠期"}</b>
+                      <small>周期</small>
+                    </span>
+                  </div>
+                  <div className="catalog-raw-tags">
+                    <span>{product.firstRechargeAmount ? `首充${product.firstRechargeAmount}元` : "首充待确认"}</span>
+                    <span>
+                      {product.age1}-{product.age2}岁
+                    </span>
+                    <span>{product.numberSel > 0 ? "支持选号" : "不选号"}</span>
+                  </div>
+                  <p>{product.taocan || product.rule || "套餐详情请以办理页展示为准，办理前重点核对优惠期、首充和地区限制。"}</p>
+                  <div className="catalog-card-actions">
+                    <button className="button green" onClick={() => openOrder(product)} type="button">
+                      <ExternalLink size={17} />
+                      去办理
+                    </button>
+                    <a className="button small" href={`/card/${product.productID}`}>
+                      看详情
+                    </a>
+                  </div>
                 </div>
-                <div className="catalog-raw-tags">
-                  <span>{product.firstRechargeAmount ? `首充${product.firstRechargeAmount}元` : "首充待确认"}</span>
-                  <span>
-                    {product.age1}-{product.age2}岁
-                  </span>
-                  <span>{product.numberSel > 0 ? "支持选号" : "不选号"}</span>
-                </div>
-                <p>{product.taocan || product.rule || "套餐详情请以办理页展示为准，办理前重点核对优惠期、首充和地区限制。"}</p>
-                <div className="catalog-card-actions">
-                  <button className="button green" onClick={() => openOrder(product)} type="button">
-                    <ExternalLink size={17} />
-                    去办理
-                  </button>
-                  <a className="button small" href={`/card/${product.productID}`}>
-                    看详情
-                  </a>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
+              </article>
+            ))}
+          </div>
+          {hasMoreProducts ? (
+            <button className="catalog-load-more" onClick={() => setVisibleCount((count) => count + visibleCountStep)} type="button">
+              加载更多商品
+            </button>
+          ) : null}
+        </>
       ) : (
         <div className="catalog-empty">
           <h2>没有匹配的商品</h2>

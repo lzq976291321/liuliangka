@@ -36,6 +36,7 @@ export type Haoka172OrderLink = {
 
 const H5_BASE_URL = "https://haokawx.lot-ml.com";
 const DEFAULT_ORDER_USER_ID = "5879e81e899912ce";
+const ORDER_LINK_SNAPSHOT_PATH = path.join(process.cwd(), ".data", "haoka172-order-links-snapshot.json");
 const orderCatalogCache = new Map<string, { expiresAt: number; links: Map<number, Haoka172OrderLink> }>();
 const orderCatalogInFlight = new Map<string, Promise<Map<number, Haoka172OrderLink>>>();
 
@@ -45,6 +46,10 @@ function getOrderLinkCacheTtlMs() {
 
 function getOrderLinkMaxRetries() {
   return Number(process.env.HAOKA172_ORDER_LINK_MAX_RETRIES ?? 4);
+}
+
+function getOrderLinkSnapshotMaxAgeMs() {
+  return Number(process.env.HAOKA172_ORDER_LINK_SNAPSHOT_MAX_AGE_SECONDS ?? 129600) * 1000;
 }
 
 export function getHaoka172OrderUserId() {
@@ -116,6 +121,34 @@ function toOrderLink(item: ProductEnCatalogItem): Haoka172OrderLink | undefined 
     age1: item.age1,
     age2: item.age2
   };
+}
+
+async function readOrderLinksFromSnapshot(userId: string, options: { allowStale?: boolean } = {}) {
+  try {
+    const snapshot = JSON.parse(await readFile(ORDER_LINK_SNAPSHOT_PATH, "utf8")) as {
+      syncedAt?: string;
+      userId?: string;
+      links?: Haoka172OrderLink[];
+    };
+    const syncedAtMs = snapshot.syncedAt ? Date.parse(snapshot.syncedAt) : 0;
+    const isFresh = syncedAtMs > 0 && Date.now() - syncedAtMs <= getOrderLinkSnapshotMaxAgeMs();
+
+    if (snapshot.userId && snapshot.userId !== userId) {
+      return undefined;
+    }
+
+    if (!isFresh && !options.allowStale && process.env.HAOKA172_ALLOW_STALE_SNAPSHOT !== "1") {
+      return undefined;
+    }
+
+    if (!Array.isArray(snapshot.links) || !snapshot.links.length) {
+      return undefined;
+    }
+
+    return new Map(snapshot.links.map((link) => [link.productID, link]));
+  } catch {
+    return undefined;
+  }
 }
 
 async function fetchOrderCatalog(userId: string) {
@@ -214,13 +247,8 @@ export async function getHaoka172OrderLink(productId: string | number) {
     return undefined;
   }
 
-  try {
-    const links = await fetchOrderCatalog(userId);
-    return links.get(productID);
-  } catch (error) {
-    console.warn(error);
-    return undefined;
-  }
+  const links = await getHaoka172OrderLinks();
+  return links.get(productID);
 }
 
 export async function getHaoka172OrderLinks() {
@@ -230,10 +258,25 @@ export async function getHaoka172OrderLinks() {
     return new Map<number, Haoka172OrderLink>();
   }
 
+  const snapshotLinks = await readOrderLinksFromSnapshot(userId);
+  if (snapshotLinks?.size) {
+    orderCatalogCache.set(userId, {
+      expiresAt: Date.now() + getOrderLinkCacheTtlMs(),
+      links: snapshotLinks
+    });
+    return snapshotLinks;
+  }
+
+  if (process.env.HAOKA172_DISABLE_LIVE_FETCH === "1") {
+    return (await readOrderLinksFromSnapshot(userId, { allowStale: true })) ?? new Map<number, Haoka172OrderLink>();
+  }
+
   try {
     return await fetchOrderCatalog(userId);
   } catch (error) {
     console.warn(error);
-    return new Map<number, Haoka172OrderLink>();
+    return (await readOrderLinksFromSnapshot(userId, { allowStale: true })) ?? new Map<number, Haoka172OrderLink>();
   }
 }
+import { readFile } from "node:fs/promises";
+import path from "node:path";

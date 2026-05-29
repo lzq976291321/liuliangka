@@ -3,9 +3,12 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 const PRODUCTS_URL = "https://haokaopenapi.lot-ml.com/api/order/GetProductsV2";
+const H5_BASE_URL = "https://haokawx.lot-ml.com";
 const DATA_DIR = path.join(process.cwd(), ".data");
 const SNAPSHOT_PATH = path.join(DATA_DIR, "haoka172-products-snapshot.json");
+const ORDER_LINKS_SNAPSHOT_PATH = path.join(DATA_DIR, "haoka172-order-links-snapshot.json");
 const EVENTS_PATH = path.join(DATA_DIR, "haoka172-product-events.jsonl");
+const DEFAULT_ORDER_USER_ID = "5879e81e899912ce";
 const MISSING_INACTIVE_THRESHOLD = Number(process.env.HAOKA172_MISSING_INACTIVE_THRESHOLD ?? 3);
 const SYNC_MIN_INTERVAL_SECONDS = Number(process.env.HAOKA172_SYNC_MIN_INTERVAL_SECONDS ?? 1800);
 const REQUEST_TIMEOUT_MS = Number(process.env.HAOKA172_TIMEOUT_MS ?? 8000);
@@ -189,6 +192,124 @@ async function fetchProductsFrom172() {
   throw new Error("商品同步失败：超过最大重试次数");
 }
 
+function getOrderUserId() {
+  return process.env.HAOKA172_ORDER_USER_ID || process.env.HAOKA172_AGENT_SN || DEFAULT_ORDER_USER_ID;
+}
+
+function getShareUrl(item) {
+  if (item.shareUrl) {
+    return item.shareUrl;
+  }
+
+  if (item.tuiPath) {
+    return new URL(item.tuiPath, H5_BASE_URL).toString();
+  }
+
+  return undefined;
+}
+
+function parseOrderUrl(shareUrl) {
+  try {
+    const url = new URL(shareUrl, H5_BASE_URL);
+    return {
+      pudId: url.searchParams.get("pudID") || undefined,
+      userId: url.searchParams.get("userid") || undefined,
+      shareUrl: url.toString()
+    };
+  } catch {
+    return {
+      pudId: undefined,
+      userId: undefined,
+      shareUrl
+    };
+  }
+}
+
+function toOrderLink(item) {
+  const productID = Number(item.productID ?? item.id);
+  const shareUrl = getShareUrl(item);
+
+  if (!Number.isFinite(productID) || !shareUrl) {
+    return undefined;
+  }
+
+  const parsed = parseOrderUrl(shareUrl);
+
+  return {
+    productID,
+    productName: item.name || `套餐 ${productID}`,
+    shareUrl: parsed.shareUrl,
+    pudId: parsed.pudId,
+    userId: parsed.userId,
+    operator: item.isp,
+    monthlyRent: item.nowPrice,
+    generalDataGB: item.tyLiuliang,
+    directedDataGB: item.dxLiuliang,
+    callMinutes: item.tonghua,
+    age1: item.age1,
+    age2: item.age2
+  };
+}
+
+async function fetchOrderLinks() {
+  const userId = getOrderUserId();
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    const body = new URLSearchParams({
+      title: "",
+      PriceTime: "优惠时间",
+      LiuLiang: "可用流量",
+      Tonghua: "通话时长",
+      Province: "全部",
+      City: "全部",
+      redbook: ""
+    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(`${H5_BASE_URL}/ProductEn/Index2/${encodeURIComponent(userId)}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          Referer: `${H5_BASE_URL}/ProductEn/Index/${encodeURIComponent(userId)}`,
+          "User-Agent": "Mozilla/5.0"
+        },
+        body,
+        signal: controller.signal
+      });
+      const payload = await response.json().catch(() => null);
+
+      if (response.ok && Array.isArray(payload?.data)) {
+        return {
+          userId,
+          links: payload.data
+            .map(toOrderLink)
+            .filter(Boolean)
+            .sort((a, b) => a.productID - b.productID)
+        };
+      }
+
+      if (attempt < MAX_RETRIES && shouldRetryStatus(response.status)) {
+        await sleep(retryDelayMs(response, attempt));
+        continue;
+      }
+
+      throw new Error(`办理链接同步失败：HTTP ${response.status}，message=${payload?.message}`);
+    } catch (error) {
+      if (attempt < MAX_RETRIES) {
+        await sleep(retryDelayMs(undefined, attempt));
+        continue;
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  throw new Error("办理链接同步失败：超过最大重试次数");
+}
+
 async function readSnapshot() {
   try {
     return JSON.parse(await readFile(SNAPSHOT_PATH, "utf8"));
@@ -347,11 +468,27 @@ async function main() {
   }
 
   const rawProducts = await fetchProductsFrom172();
+  const orderLinks = await fetchOrderLinks();
   const normalizedProducts = rawProducts.map(normalizeProduct);
   const { snapshot, events } = buildNextSnapshot(previous, normalizedProducts, syncedAt);
 
   await mkdir(DATA_DIR, { recursive: true });
   await writeFile(SNAPSHOT_PATH, JSON.stringify(snapshot, null, 2), "utf8");
+  await writeFile(
+    ORDER_LINKS_SNAPSHOT_PATH,
+    JSON.stringify(
+      {
+        version: 1,
+        syncedAt,
+        userId: orderLinks.userId,
+        total: orderLinks.links.length,
+        links: orderLinks.links
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
   await writeEvents(events);
 
   const currentCategoryCount = countBy(Object.fromEntries(normalizedProducts.map((product) => [product.productID, product])), "category");
@@ -359,6 +496,7 @@ async function main() {
 
   console.log("商品同步完成");
   console.log("本次返回商品:", normalizedProducts.length);
+  console.log("办理入口商品:", orderLinks.links.length);
   console.log("当前品类:", JSON.stringify(currentCategoryCount));
   console.log("历史状态:", JSON.stringify(statusCount));
   console.log("新增事件:", events.length);
@@ -369,6 +507,7 @@ async function main() {
     console.log(`- 还有 ${events.length - 8} 条事件，见 ${EVENTS_PATH}`);
   }
   console.log("快照:", SNAPSHOT_PATH);
+  console.log("办理入口快照:", ORDER_LINKS_SNAPSHOT_PATH);
 }
 
 main().catch((error) => {

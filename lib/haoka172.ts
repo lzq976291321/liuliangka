@@ -57,7 +57,8 @@ function getMaxRetries() {
 }
 
 function getSnapshotMaxAgeMs() {
-  return Number(process.env.HAOKA172_SNAPSHOT_MAX_AGE_SECONDS ?? 7200) * 1000;
+  // 商品由每日构建同步，运行时优先用快照，避免首屏被上游接口拖慢。
+  return Number(process.env.HAOKA172_SNAPSHOT_MAX_AGE_SECONDS ?? 129600) * 1000;
 }
 
 function md5(value: string) {
