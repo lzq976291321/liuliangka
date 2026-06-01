@@ -1,7 +1,7 @@
 "use client";
 
-import { ExternalLink, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowUp, ExternalLink, RotateCcw, Search, SlidersHorizontal, X } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { OrderFrame } from "@/components/OrderFrame";
 import { RemoteImage } from "@/components/RemoteImage";
 import type { CardProduct, ProductCategory } from "@/lib/types";
@@ -222,6 +222,11 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
   const [ageGroup, setAgeGroup] = useState<(typeof ageOptions)[number]["value"]>("all");
   const [selectedProduct, setSelectedProduct] = useState<CatalogProduct | undefined>();
   const [visibleCount, setVisibleCount] = useState(initialVisibleCount);
+  const [isFilterVisible, setIsFilterVisible] = useState(true);
+  const [showBackToTop, setShowBackToTop] = useState(false);
+  const lastScrollCheckpointRef = useRef(0);
+  const ignoreScrollDirectionUntilRef = useRef(0);
+  const tickingScrollRef = useRef(false);
   const catalogProducts = useMemo(() => products.filter((product) => product.category === "mobile-card"), [products]);
   const indexedProducts = useMemo(() => catalogProducts.map((product) => ({ product, searchText: buildSearchText(product) })), [catalogProducts]);
   const areaOptions = useMemo(() => {
@@ -306,6 +311,68 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
   }, [ageGroup, area, dataBand, keyword, operator, priceBand, term]);
 
   useEffect(() => {
+    const minScrollDelta = 12;
+    const alwaysShowFiltersBefore = 96;
+    const showBackToTopAfter = 520;
+    const filterTransitionGuardMs = 320;
+
+    lastScrollCheckpointRef.current = Math.max(window.scrollY, 0);
+    setShowBackToTop(lastScrollCheckpointRef.current > showBackToTopAfter);
+
+    const updateScrollState = () => {
+      const currentScrollY = Math.max(window.scrollY, 0);
+      const delta = currentScrollY - lastScrollCheckpointRef.current;
+      const now = window.performance.now();
+
+      setShowBackToTop(currentScrollY > showBackToTopAfter);
+
+      if (currentScrollY <= alwaysShowFiltersBefore) {
+        setIsFilterVisible(true);
+        lastScrollCheckpointRef.current = currentScrollY;
+        tickingScrollRef.current = false;
+        return;
+      }
+
+      if (now < ignoreScrollDirectionUntilRef.current) {
+        lastScrollCheckpointRef.current = currentScrollY;
+        tickingScrollRef.current = false;
+        return;
+      }
+
+      if (Math.abs(delta) >= minScrollDelta) {
+        const nextFilterVisible = delta < 0;
+
+        setIsFilterVisible((currentFilterVisible) => {
+          if (currentFilterVisible !== nextFilterVisible) {
+            ignoreScrollDirectionUntilRef.current = now + filterTransitionGuardMs;
+          }
+
+          return nextFilterVisible;
+        });
+
+        lastScrollCheckpointRef.current = currentScrollY;
+      }
+
+      tickingScrollRef.current = false;
+    };
+
+    const handleScroll = () => {
+      if (tickingScrollRef.current) {
+        return;
+      }
+
+      tickingScrollRef.current = true;
+      window.requestAnimationFrame(updateScrollState);
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!selectedProduct) {
       return;
     }
@@ -338,12 +405,18 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
     setDataBand("all");
     setTerm("all");
     setAgeGroup("all");
+    setIsFilterVisible(true);
+  }
+
+  function scrollToTop() {
+    setIsFilterVisible(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   return (
     <section className="catalog-shell">
       <h1 className="sr-only">流量卡办理</h1>
-      <div className="catalog-toolbar">
+      <div className={`catalog-toolbar ${isFilterVisible ? "" : "is-filter-hidden"}`}>
         <div className="catalog-search-line">
           <label className="catalog-search">
             <Search size={18} />
@@ -566,6 +639,10 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
           </div>
         </div>
       ) : null}
+
+      <button className={`back-to-top ${showBackToTop ? "is-visible" : ""}`} onClick={scrollToTop} type="button" aria-label="回到顶部">
+        <ArrowUp size={22} />
+      </button>
     </section>
   );
 }

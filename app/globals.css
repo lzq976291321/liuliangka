@@ -220,13 +220,14 @@ img {
   top: 57px;
   z-index: 20;
   display: grid;
-  gap: 10px;
+  gap: 0;
   border: 3px solid var(--border-strong);
   border-radius: var(--radius);
   background: var(--surface-card);
   padding: 12px;
   box-shadow: var(--shadow-card);
   backdrop-filter: var(--blur-glass);
+  transition: box-shadow 180ms ease, transform 180ms ease;
 }
 
 .catalog-search-line {
@@ -307,6 +308,21 @@ img {
 .catalog-filter-deck {
   display: grid;
   gap: 8px;
+  max-height: 420px;
+  margin-top: 10px;
+  overflow: hidden;
+  opacity: 1;
+  transform: translateY(0);
+  transition: max-height 240ms ease, margin-top 240ms ease, opacity 180ms ease, transform 240ms ease;
+  will-change: max-height, opacity, transform;
+}
+
+.catalog-toolbar.is-filter-hidden .catalog-filter-deck {
+  max-height: 0;
+  margin-top: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
 }
 
 .catalog-filter-label {
@@ -597,6 +613,38 @@ img {
   font-size: 14px;
   font-weight: 900;
   box-shadow: var(--shadow-card);
+}
+
+.back-to-top {
+  position: fixed;
+  right: max(16px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  z-index: 50;
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border: 3px solid var(--border-strong);
+  border-radius: var(--radius-button);
+  background: var(--accent);
+  color: var(--accent-foreground);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transform: translate(10px, 12px) scale(0.92);
+  transition: opacity 180ms ease, transform 180ms ease, box-shadow 150ms ease;
+  box-shadow: 5px 5px 0 var(--border-strong);
+}
+
+.back-to-top.is-visible {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translate(0, 0) scale(1);
+}
+
+.back-to-top:hover {
+  transform: translate(-2px, -2px) scale(1);
+  box-shadow: 8px 8px 0 var(--border-strong);
 }
 
 .remote-image-placeholder {
@@ -1004,7 +1052,7 @@ img {
 
   .catalog-toolbar {
     top: 57px;
-    gap: 8px;
+    gap: 0;
     padding: 10px;
   }
 
@@ -1023,8 +1071,20 @@ img {
     font-size: 22px;
   }
 
+  .catalog-filter-deck {
+    max-height: 480px;
+    margin-top: 8px;
+  }
+
   .catalog-filter-group {
     grid-template-columns: 38px minmax(0, 1fr);
+  }
+
+  .back-to-top {
+    right: max(12px, env(safe-area-inset-right));
+    bottom: max(14px, env(safe-area-inset-bottom));
+    width: 44px;
+    height: 44px;
   }
 
   .catalog-grid,
@@ -1103,5 +1163,16 @@ img {
 
   .section-header {
     align-items: flex-start;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .catalog-filter-deck,
+  .back-to-top {
+    transition: none;
   }
 }
