@@ -206,7 +206,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
         <div className="section-header">
           <div>
             <h2 className="section-title">相近套餐</h2>
-            <p className="section-note">保留对比入口，避免用户从详情页直接流失。</p>
+            <p className="section-note">同价位或同流量套餐，办理前可以再对比一次。</p>
           </div>
         </div>
         <div className="product-grid">
