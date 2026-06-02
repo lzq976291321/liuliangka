@@ -23,7 +23,6 @@ npm run dev
 ```bash
 HAOKA172_USER_ID=你的账号
 HAOKA172_SECRET=管理员提供的 secret
-HAOKA172_ORDER_USER_ID=办理页用户 ID
 NEXT_PUBLIC_SITE_URL=https://liuliangka.netlify.app
 NEXT_PUBLIC_CHANNEL_CONFIG_JSON='{"zhangsan":{"name":"张三","orderUserId":"172给张三的userid"}}'
 ```
@@ -45,9 +44,9 @@ npm run sync:products -- --force
 - `.data/haoka172-products-snapshot.json`
 - `.data/haoka172-product-events.jsonl`
 
-## Netlify 部署
+## 部署
 
-部署只走 GitHub -> Netlify：
+部署只保留 Netlify：
 
 1. 提交代码并推送到 `main`
 2. Netlify 自动执行 `npm run build:netlify`
@@ -64,10 +63,11 @@ Netlify 生产环境需要配置：
 ```bash
 HAOKA172_USER_ID
 HAOKA172_SECRET
-HAOKA172_ORDER_USER_ID
 NEXT_PUBLIC_SITE_URL
 NEXT_PUBLIC_CHANNEL_CONFIG_JSON
 ```
+
+172 办理页用户 ID 已内置在项目里，不依赖服务器环境变量。
 
 `build:netlify` 会先强制同步商品。如果接口签名错误或上游不可用，构建会失败，避免发布空数据或错误商品。
 

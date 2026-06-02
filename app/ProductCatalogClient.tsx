@@ -235,7 +235,10 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
   const [showBackToTop, setShowBackToTop] = useState(false);
   const lastScrollCheckpointRef = useRef(0);
   const ignoreScrollDirectionUntilRef = useRef(0);
+  const lastScrollUpdateAtRef = useRef(0);
   const tickingScrollRef = useRef(false);
+  const filterVisibleRef = useRef(true);
+  const showBackToTopRef = useRef(false);
   const catalogProducts = useMemo(() => products.filter((product) => product.category === "mobile-card"), [products]);
   const indexedProducts = useMemo(() => catalogProducts.map((product) => ({ product, searchText: buildSearchText(product) })), [catalogProducts]);
   const areaOptions = useMemo(() => {
@@ -321,23 +324,50 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
   }, [ageGroup, area, dataBand, keyword, operator, priceBand, term]);
 
   useEffect(() => {
-    const minScrollDelta = 12;
+    const minScrollDelta = 36;
+    const scrollUpdateIntervalMs = 120;
     const alwaysShowFiltersBefore = 96;
     const showBackToTopAfter = 520;
-    const filterTransitionGuardMs = 320;
+    const filterTransitionGuardMs = 420;
 
     lastScrollCheckpointRef.current = Math.max(window.scrollY, 0);
-    setShowBackToTop(lastScrollCheckpointRef.current > showBackToTopAfter);
+    showBackToTopRef.current = lastScrollCheckpointRef.current > showBackToTopAfter;
+    setShowBackToTop(showBackToTopRef.current);
+
+    function updateFilterVisible(nextFilterVisible: boolean) {
+      if (filterVisibleRef.current === nextFilterVisible) {
+        return;
+      }
+
+      filterVisibleRef.current = nextFilterVisible;
+      setIsFilterVisible(nextFilterVisible);
+    }
+
+    function updateBackToTopVisible(nextBackToTopVisible: boolean) {
+      if (showBackToTopRef.current === nextBackToTopVisible) {
+        return;
+      }
+
+      showBackToTopRef.current = nextBackToTopVisible;
+      setShowBackToTop(nextBackToTopVisible);
+    }
 
     const updateScrollState = () => {
       const currentScrollY = Math.max(window.scrollY, 0);
-      const delta = currentScrollY - lastScrollCheckpointRef.current;
       const now = window.performance.now();
 
-      setShowBackToTop(currentScrollY > showBackToTopAfter);
+      if (now - lastScrollUpdateAtRef.current < scrollUpdateIntervalMs) {
+        tickingScrollRef.current = false;
+        return;
+      }
+
+      lastScrollUpdateAtRef.current = now;
+
+      const delta = currentScrollY - lastScrollCheckpointRef.current;
+      updateBackToTopVisible(currentScrollY > showBackToTopAfter);
 
       if (currentScrollY <= alwaysShowFiltersBefore) {
-        setIsFilterVisible(true);
+        updateFilterVisible(true);
         lastScrollCheckpointRef.current = currentScrollY;
         tickingScrollRef.current = false;
         return;
@@ -352,13 +382,11 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
       if (Math.abs(delta) >= minScrollDelta) {
         const nextFilterVisible = delta < 0;
 
-        setIsFilterVisible((currentFilterVisible) => {
-          if (currentFilterVisible !== nextFilterVisible) {
-            ignoreScrollDirectionUntilRef.current = now + filterTransitionGuardMs;
-          }
+        if (filterVisibleRef.current !== nextFilterVisible) {
+          ignoreScrollDirectionUntilRef.current = now + filterTransitionGuardMs;
+        }
 
-          return nextFilterVisible;
-        });
+        updateFilterVisible(nextFilterVisible);
 
         lastScrollCheckpointRef.current = currentScrollY;
       }
@@ -415,10 +443,12 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
     setDataBand("all");
     setTerm("all");
     setAgeGroup("all");
+    filterVisibleRef.current = true;
     setIsFilterVisible(true);
   }
 
   function scrollToTop() {
+    filterVisibleRef.current = true;
     setIsFilterVisible(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }

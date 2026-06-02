@@ -8,7 +8,7 @@ const DATA_DIR = path.join(process.cwd(), ".data");
 const SNAPSHOT_PATH = path.join(DATA_DIR, "haoka172-products-snapshot.json");
 const ORDER_LINKS_SNAPSHOT_PATH = path.join(DATA_DIR, "haoka172-order-links-snapshot.json");
 const EVENTS_PATH = path.join(DATA_DIR, "haoka172-product-events.jsonl");
-const DEFAULT_ORDER_USER_ID = "5879e81e899912ce";
+const BUILTIN_ORDER_USER_ID = "5879e81e899912ce";
 const MISSING_INACTIVE_THRESHOLD = Number(process.env.HAOKA172_MISSING_INACTIVE_THRESHOLD ?? 3);
 const SYNC_MIN_INTERVAL_SECONDS = Number(process.env.HAOKA172_SYNC_MIN_INTERVAL_SECONDS ?? 1800);
 const REQUEST_TIMEOUT_MS = Number(process.env.HAOKA172_TIMEOUT_MS ?? 8000);
@@ -193,7 +193,7 @@ async function fetchProductsFrom172() {
 }
 
 function getOrderUserId() {
-  return process.env.HAOKA172_ORDER_USER_ID || process.env.HAOKA172_AGENT_SN || DEFAULT_ORDER_USER_ID;
+  return BUILTIN_ORDER_USER_ID;
 }
 
 function getShareUrl(item) {

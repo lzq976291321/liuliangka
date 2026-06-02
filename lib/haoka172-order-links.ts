@@ -35,7 +35,7 @@ export type Haoka172OrderLink = {
 };
 
 const H5_BASE_URL = "https://haokawx.lot-ml.com";
-const DEFAULT_ORDER_USER_ID = "5879e81e899912ce";
+const BUILTIN_ORDER_USER_ID = "5879e81e899912ce";
 const ORDER_LINK_SNAPSHOT_PATH = path.join(process.cwd(), ".data", "haoka172-order-links-snapshot.json");
 const orderCatalogCache = new Map<string, { expiresAt: number; links: Map<number, Haoka172OrderLink> }>();
 const orderCatalogInFlight = new Map<string, Promise<Map<number, Haoka172OrderLink>>>();
@@ -53,7 +53,7 @@ function getOrderLinkSnapshotMaxAgeMs() {
 }
 
 export function getHaoka172OrderUserId() {
-  return process.env.HAOKA172_ORDER_USER_ID || process.env.HAOKA172_AGENT_SN || DEFAULT_ORDER_USER_ID;
+  return BUILTIN_ORDER_USER_ID;
 }
 
 function sleep(ms: number) {
