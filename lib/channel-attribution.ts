@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import projectChannelConfigs from "@/config/channel-config.json";
 import { getBrowserVisitorId } from "@/lib/visitor-id";
 
 export const channelQueryKeys = ["agent_id", "channel", "invite"] as const;
@@ -26,8 +27,6 @@ const channelVisitStorageKey = "liuliangka_channel_visit_events";
 const staticChannelConfigs: Record<string, ChannelConfig> = {
   // zhangsan: { name: "张三", orderUserId: "172给张三的userid" }
 };
-
-let envChannelConfigCache: Record<string, ChannelConfig> | undefined;
 
 function normalizeChannelCode(value?: string | null) {
   const code = value?.trim();
@@ -91,40 +90,24 @@ function normalizeChannelConfig(value: unknown): ChannelConfig | undefined {
   };
 }
 
-function parseEnvChannelConfigs() {
-  if (envChannelConfigCache) {
-    return envChannelConfigCache;
-  }
+const configuredChannelConfigs = Object.entries(projectChannelConfigs as Record<string, unknown>).reduce<Record<string, ChannelConfig>>(
+  (configs, [rawCode, rawValue]) => {
+    const code = normalizeChannelCode(rawCode);
+    const config = normalizeChannelConfig(rawValue);
 
-  const rawConfig = process.env.NEXT_PUBLIC_CHANNEL_CONFIG_JSON;
-  if (!rawConfig) {
-    envChannelConfigCache = {};
-    return envChannelConfigCache;
-  }
+    if (code && config) {
+      configs[code] = config;
+    }
 
-  try {
-    const parsed = JSON.parse(rawConfig) as Record<string, unknown>;
-    envChannelConfigCache = Object.entries(parsed).reduce<Record<string, ChannelConfig>>((configs, [rawCode, rawValue]) => {
-      const code = normalizeChannelCode(rawCode);
-      const config = normalizeChannelConfig(rawValue);
-
-      if (code && config) {
-        configs[code] = config;
-      }
-
-      return configs;
-    }, {});
-  } catch {
-    envChannelConfigCache = {};
-  }
-
-  return envChannelConfigCache;
-}
+    return configs;
+  },
+  {}
+);
 
 export function getChannelConfigs() {
   return {
     ...staticChannelConfigs,
-    ...parseEnvChannelConfigs()
+    ...configuredChannelConfigs
   };
 }
 

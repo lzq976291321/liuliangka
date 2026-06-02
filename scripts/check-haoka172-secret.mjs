@@ -1,23 +1,48 @@
 import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 
 const PRODUCTS_URL = "https://haokaopenapi.lot-ml.com/api/order/GetProductsV2";
+const ACCOUNTS_CONFIG_PATH = path.join(process.cwd(), "config", "haoka172-accounts.json");
 
 function md5(value) {
   return crypto.createHash("md5").update(value).digest("hex");
 }
 
-function readEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`缺少环境变量 ${name}`);
+function getCliOption(name) {
+  const index = process.argv.indexOf(name);
+  if (index === -1) {
+    return undefined;
   }
-  return value;
+
+  return process.argv[index + 1];
+}
+
+function isPlaceholderSecret(value) {
+  return !value || /\*|REPLACE_WITH_|REDACT|hidden/i.test(value);
+}
+
+function getSelectedAccount() {
+  const config = JSON.parse(readFileSync(ACCOUNTS_CONFIG_PATH, "utf8"));
+  const accountId = getCliOption("--account") || config.defaultAccountId;
+  const account = config.accounts?.find((item) => item.id === accountId);
+
+  if (!account?.productUserId) {
+    throw new Error(`172 账号配置无效：${accountId}`);
+  }
+
+  if (isPlaceholderSecret(account.productSecret)) {
+    throw new Error(`172 账号 ${accountId} 的 productSecret 仍是占位或脱敏值，请在 config/haoka172-accounts.json 填入真实 secret`);
+  }
+
+  return account;
 }
 
 async function main() {
-  const userId = readEnv("HAOKA172_USER_ID");
-  const secret = readEnv("HAOKA172_SECRET");
-  const productId = process.env.HAOKA172_PRODUCT_ID ?? "";
+  const account = getSelectedAccount();
+  const userId = account.productUserId;
+  const secret = account.productSecret;
+  const productId = account.productId ?? "";
   const timestamp = Math.floor(Date.now() / 1000).toString();
   const userSign = md5(`ProductID=${productId}&Timestamp=${timestamp}&user_id=${userId}${secret}`);
 

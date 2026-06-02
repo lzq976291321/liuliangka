@@ -16,16 +16,44 @@ npm run dev
 
 打开 `http://localhost:3000`。
 
-## 商品同步
+## 172 账号配置
 
-商品数据来自上游接口。创建 `.env.local`：
+172 账号由项目内配置文件管理，不依赖 Netlify 服务器环境变量：
+
+```txt
+config/haoka172-accounts.json
+```
+
+配置结构：
+
+```json
+{
+  "defaultAccountId": "default",
+  "accounts": [
+    {
+      "id": "default",
+      "name": "默认 172 账号",
+      "productUserId": "172 商品接口 user_id",
+      "productSecret": "172 商品接口 secret",
+      "orderUserId": "172 办理页 userid"
+    }
+  ]
+}
+```
+
+后续有多个 172 用户时，在 `accounts` 里继续追加账号，并按需要调整 `defaultAccountId`。
+
+可以尝试从 Netlify 现有变量导入：
 
 ```bash
-HAOKA172_USER_ID=你的账号
-HAOKA172_SECRET=管理员提供的 secret
-NEXT_PUBLIC_SITE_URL=https://liuliangka.netlify.app
-NEXT_PUBLIC_CHANNEL_CONFIG_JSON='{"zhangsan":{"name":"张三","orderUserId":"172给张三的userid"}}'
+npm run import:netlify-config -- --context production --account default --order-user-id 172办理页userid
 ```
+
+如果 Netlify 返回的是脱敏 secret，脚本会拒绝写入，需要手动把真实 `productSecret` 填到 `config/haoka172-accounts.json`。
+
+## 商品同步
+
+商品数据来自上游接口。
 
 验证密钥：
 
@@ -37,6 +65,12 @@ npm run check:products
 
 ```bash
 npm run sync:products -- --force
+```
+
+指定账号同步：
+
+```bash
+npm run sync:products -- --force --account default
 ```
 
 同步脚本会写入：
@@ -58,16 +92,7 @@ npm run sync:products -- --force
 https://liuliangka.netlify.app
 ```
 
-Netlify 生产环境需要配置：
-
-```bash
-HAOKA172_USER_ID
-HAOKA172_SECRET
-NEXT_PUBLIC_SITE_URL
-NEXT_PUBLIC_CHANNEL_CONFIG_JSON
-```
-
-172 办理页用户 ID 已内置在项目里，不依赖服务器环境变量。
+172 账号和渠道参数都由项目文件管理，Netlify UI 不需要再配置 `HAOKA172_USER_ID`、`HAOKA172_SECRET`、`HAOKA172_ORDER_USER_ID` 或 `NEXT_PUBLIC_CHANNEL_CONFIG_JSON`。
 
 `build:netlify` 会先强制同步商品。如果接口签名错误或上游不可用，构建会失败，避免发布空数据或错误商品。
 
@@ -83,10 +108,11 @@ https://liuliangka.netlify.app?invite=abc123
 
 用户进入网站后，渠道码会写入 `localStorage`。后续筛选、刷新、进入商品详情页，再点击办理时，系统会按配置替换 172 办理链接里的推广参数。
 
-配置渠道有两种方式：
+渠道配置在项目文件里：
 
-1. 改 `lib/channel-attribution.ts` 里的 `staticChannelConfigs`
-2. 在 Netlify 配置 `NEXT_PUBLIC_CHANNEL_CONFIG_JSON`
+```txt
+config/channel-config.json
+```
 
 最常见配置是替换 172 链接里的 `userid`：
 

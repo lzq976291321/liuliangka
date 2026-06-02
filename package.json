@@ -8,6 +8,7 @@
     "build:netlify": "npm run sync:products -- --force && HAOKA172_DISABLE_LIVE_FETCH=1 npm run build",
     "lint": "next lint",
     "check:products": "node scripts/check-haoka172-secret.mjs",
+    "import:netlify-config": "node scripts/import-netlify-haoka172-config.mjs",
     "sync:products": "node scripts/sync-haoka172-products.mjs",
     "typecheck": "tsc --noEmit"
   },

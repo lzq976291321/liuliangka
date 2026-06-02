@@ -1,3 +1,5 @@
+import { getDefaultHaoka172Account } from "@/lib/haoka172-accounts";
+
 type ProductEnCatalogItem = {
   productID?: number;
   id?: number;
@@ -35,7 +37,6 @@ export type Haoka172OrderLink = {
 };
 
 const H5_BASE_URL = "https://haokawx.lot-ml.com";
-const BUILTIN_ORDER_USER_ID = "5879e81e899912ce";
 const ORDER_LINK_SNAPSHOT_PATH = path.join(process.cwd(), ".data", "haoka172-order-links-snapshot.json");
 const orderCatalogCache = new Map<string, { expiresAt: number; links: Map<number, Haoka172OrderLink> }>();
 const orderCatalogInFlight = new Map<string, Promise<Map<number, Haoka172OrderLink>>>();
@@ -53,7 +54,7 @@ function getOrderLinkSnapshotMaxAgeMs() {
 }
 
 export function getHaoka172OrderUserId() {
-  return BUILTIN_ORDER_USER_ID;
+  return getDefaultHaoka172Account().orderUserId;
 }
 
 function sleep(ms: number) {

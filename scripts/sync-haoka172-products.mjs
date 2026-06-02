@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -8,7 +9,7 @@ const DATA_DIR = path.join(process.cwd(), ".data");
 const SNAPSHOT_PATH = path.join(DATA_DIR, "haoka172-products-snapshot.json");
 const ORDER_LINKS_SNAPSHOT_PATH = path.join(DATA_DIR, "haoka172-order-links-snapshot.json");
 const EVENTS_PATH = path.join(DATA_DIR, "haoka172-product-events.jsonl");
-const BUILTIN_ORDER_USER_ID = "5879e81e899912ce";
+const ACCOUNTS_CONFIG_PATH = path.join(process.cwd(), "config", "haoka172-accounts.json");
 const MISSING_INACTIVE_THRESHOLD = Number(process.env.HAOKA172_MISSING_INACTIVE_THRESHOLD ?? 3);
 const SYNC_MIN_INTERVAL_SECONDS = Number(process.env.HAOKA172_SYNC_MIN_INTERVAL_SECONDS ?? 1800);
 const REQUEST_TIMEOUT_MS = Number(process.env.HAOKA172_TIMEOUT_MS ?? 8000);
@@ -17,6 +18,7 @@ const FORCE_SYNC = process.argv.includes("--force") || process.env.HAOKA172_SYNC
 
 const broadbandWords = ["宽带", "单宽", "融合", "FTTR", "电视", "光猫"];
 const mobileWords = ["流量", "通用", "定向", "手机卡", "电话卡", "月租", "选号", "通话"];
+let accountsConfigCache;
 
 function md5(value) {
   return crypto.createHash("md5").update(value).digest("hex");
@@ -26,12 +28,42 @@ function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-function readEnv(name) {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`缺少环境变量 ${name}`);
+function readAccountsConfig() {
+  if (accountsConfigCache) {
+    return accountsConfigCache;
   }
-  return value;
+
+  accountsConfigCache = JSON.parse(readFileSync(ACCOUNTS_CONFIG_PATH, "utf8"));
+  return accountsConfigCache;
+}
+
+function getCliOption(name) {
+  const index = process.argv.indexOf(name);
+  if (index === -1) {
+    return undefined;
+  }
+
+  return process.argv[index + 1];
+}
+
+function isPlaceholderSecret(value) {
+  return !value || /\*|REPLACE_WITH_|REDACT|hidden/i.test(value);
+}
+
+function getSelectedAccount() {
+  const config = readAccountsConfig();
+  const accountId = getCliOption("--account") || config.defaultAccountId;
+  const account = config.accounts?.find((item) => item.id === accountId);
+
+  if (!account?.productUserId || !account.orderUserId) {
+    throw new Error(`172 账号配置无效：${accountId}`);
+  }
+
+  if (isPlaceholderSecret(account.productSecret)) {
+    throw new Error(`172 账号 ${accountId} 的 productSecret 仍是占位或脱敏值，请在 config/haoka172-accounts.json 填入真实 secret`);
+  }
+
+  return account;
 }
 
 function sleep(ms) {
@@ -144,9 +176,10 @@ function diffFields(before, after) {
 }
 
 async function fetchProductsFrom172() {
-  const userId = readEnv("HAOKA172_USER_ID");
-  const secret = readEnv("HAOKA172_SECRET");
-  const productId = process.env.HAOKA172_PRODUCT_ID ?? "";
+  const account = getSelectedAccount();
+  const userId = account.productUserId;
+  const secret = account.productSecret;
+  const productId = account.productId ?? "";
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
     const timestamp = Math.floor(Date.now() / 1000).toString();
@@ -193,7 +226,7 @@ async function fetchProductsFrom172() {
 }
 
 function getOrderUserId() {
-  return BUILTIN_ORDER_USER_ID;
+  return getSelectedAccount().orderUserId;
 }
 
 function getShareUrl(item) {

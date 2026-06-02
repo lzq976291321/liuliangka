@@ -1,0 +1,12 @@
+{
+  "defaultAccountId": "default",
+  "accounts": [
+    {
+      "id": "default",
+      "name": "默认 172 账号",
+      "productUserId": "lin172haoka",
+      "productSecret": "f2994cfa86569584d043c7b9b155ccd6",
+      "orderUserId": "5879e81e899912ce"
+    }
+  ]
+}

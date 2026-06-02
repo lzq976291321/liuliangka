@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
+import { getDefaultHaoka172Account, isPlaceholderHaoka172Secret } from "@/lib/haoka172-accounts";
 import { deriveCities, deriveScenes, detectProductCategory, parseCallMinutes, parseData, parseIsLongTerm, parseMonthlyRent, parsePriceTime } from "@/lib/product-parser";
 import type { CardProduct, Operator } from "@/lib/types";
 
@@ -235,10 +236,12 @@ async function postProducts(userId: string, secret: string, productId: string) {
 }
 
 async function fetchProductsFrom172(productId: string): Promise<CardProduct[]> {
-  const userId = process.env.HAOKA172_USER_ID;
-  const secret = process.env.HAOKA172_SECRET;
+  const account = getDefaultHaoka172Account();
+  const userId = account.productUserId;
+  const secret = account.productSecret;
+  const targetProductId = productId || account.productId || "";
 
-  if (!userId || !secret) {
+  if (!userId || isPlaceholderHaoka172Secret(secret)) {
     return (await readProductsFromSnapshot(productId, { allowStale: true })) ?? [];
   }
 
@@ -247,7 +250,7 @@ async function fetchProductsFrom172(productId: string): Promise<CardProduct[]> {
 
   for (let attempt = 0; attempt <= getMaxRetries(); attempt += 1) {
     try {
-      const response = await postProducts(userId, secret, productId);
+      const response = await postProducts(userId, secret, targetProductId);
       lastResponse = response;
 
       if (!response.ok) {
