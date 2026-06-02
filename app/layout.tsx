@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ClipboardList } from "lucide-react";
 import { siteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -32,6 +33,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                 <span className="brand-mark">卡</span>
                 <span>本地流量卡推荐</span>
               </Link>
+              <a className="topbar-order-link" href="https://haokawx.lot-ml.com/Search/Index">
+                <ClipboardList size={17} />
+                订单
+              </a>
             </div>
           </header>
           {children}

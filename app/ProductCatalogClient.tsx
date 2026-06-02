@@ -234,7 +234,6 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
   const [isFilterVisible, setIsFilterVisible] = useState(true);
   const [showBackToTop, setShowBackToTop] = useState(false);
   const lastScrollCheckpointRef = useRef(0);
-  const ignoreScrollDirectionUntilRef = useRef(0);
   const lastScrollUpdateAtRef = useRef(0);
   const tickingScrollRef = useRef(false);
   const filterVisibleRef = useRef(true);
@@ -324,11 +323,9 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
   }, [ageGroup, area, dataBand, keyword, operator, priceBand, term]);
 
   useEffect(() => {
-    const minScrollDelta = 36;
-    const scrollUpdateIntervalMs = 120;
-    const alwaysShowFiltersBefore = 96;
+    const collapseScrollDelta = 18;
+    const scrollUpdateIntervalMs = 80;
     const showBackToTopAfter = 520;
-    const filterTransitionGuardMs = 420;
 
     lastScrollCheckpointRef.current = Math.max(window.scrollY, 0);
     showBackToTopRef.current = lastScrollCheckpointRef.current > showBackToTopAfter;
@@ -366,28 +363,10 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
       const delta = currentScrollY - lastScrollCheckpointRef.current;
       updateBackToTopVisible(currentScrollY > showBackToTopAfter);
 
-      if (currentScrollY <= alwaysShowFiltersBefore) {
-        updateFilterVisible(true);
+      if (delta >= collapseScrollDelta) {
+        updateFilterVisible(false);
         lastScrollCheckpointRef.current = currentScrollY;
-        tickingScrollRef.current = false;
-        return;
-      }
-
-      if (now < ignoreScrollDirectionUntilRef.current) {
-        lastScrollCheckpointRef.current = currentScrollY;
-        tickingScrollRef.current = false;
-        return;
-      }
-
-      if (Math.abs(delta) >= minScrollDelta) {
-        const nextFilterVisible = delta < 0;
-
-        if (filterVisibleRef.current !== nextFilterVisible) {
-          ignoreScrollDirectionUntilRef.current = now + filterTransitionGuardMs;
-        }
-
-        updateFilterVisible(nextFilterVisible);
-
+      } else if (delta <= -collapseScrollDelta) {
         lastScrollCheckpointRef.current = currentScrollY;
       }
 
@@ -435,6 +414,12 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
     setSelectedProduct(product);
   }
 
+  function revealFilters() {
+    filterVisibleRef.current = true;
+    setIsFilterVisible(true);
+    lastScrollCheckpointRef.current = Math.max(window.scrollY, 0);
+  }
+
   function resetFilters() {
     setKeyword("");
     setOperator("全部");
@@ -443,13 +428,10 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
     setDataBand("all");
     setTerm("all");
     setAgeGroup("all");
-    filterVisibleRef.current = true;
-    setIsFilterVisible(true);
+    revealFilters();
   }
 
   function scrollToTop() {
-    filterVisibleRef.current = true;
-    setIsFilterVisible(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -472,14 +454,23 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
             ) : null}
           </label>
 
-          <div className="catalog-result-meter">
-            <span>结果</span>
-            <strong>{filteredProducts.length}</strong>
-            <small>/ {catalogProducts.length}</small>
+          <div className="catalog-toolbar-actions">
+            {!isFilterVisible ? (
+              <button className="catalog-expand-filter" onClick={revealFilters} type="button" aria-controls="catalog-filter-deck" aria-expanded={isFilterVisible}>
+                <SlidersHorizontal size={16} />
+                展开筛选
+              </button>
+            ) : null}
+
+            <div className="catalog-result-meter">
+              <span>结果</span>
+              <strong>{filteredProducts.length}</strong>
+              <small>/ {catalogProducts.length}</small>
+            </div>
           </div>
         </div>
 
-        <div className="catalog-filter-deck">
+        <div className="catalog-filter-deck" id="catalog-filter-deck">
           <div className="catalog-filter-label">
             <SlidersHorizontal size={15} />
             筛选
