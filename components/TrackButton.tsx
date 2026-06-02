@@ -2,6 +2,7 @@
 
 import { ExternalLink } from "lucide-react";
 import type { MouseEvent } from "react";
+import { buildAttributedOrderUrl, getChannelTrackFields, useChannelAttribution } from "@/lib/channel-attribution";
 import { getBrowserVisitorId } from "@/lib/visitor-id";
 
 type TrackButtonProps = {
@@ -13,7 +14,9 @@ type TrackButtonProps = {
 };
 
 export function TrackButton({ productId, productName, href, source, label = "获取办理入口" }: TrackButtonProps) {
-  const isExternal = /^https?:\/\//.test(href);
+  const channelAttribution = useChannelAttribution();
+  const attributedHref = buildAttributedOrderUrl(href, channelAttribution);
+  const isExternal = /^https?:\/\//.test(attributedHref);
 
   function handleClick(event: MouseEvent<HTMLAnchorElement>) {
     const query = new URLSearchParams(window.location.search);
@@ -28,7 +31,8 @@ export function TrackButton({ productId, productName, href, source, label = "获
       utmSource: query.get("utm_source") || undefined,
       utmMedium: query.get("utm_medium") || undefined,
       utmCampaign: query.get("utm_campaign") || undefined,
-      utmContent: query.get("utm_content") || undefined
+      utmContent: query.get("utm_content") || undefined,
+      ...getChannelTrackFields(channelAttribution)
     });
 
     if (navigator.sendBeacon) {
@@ -42,14 +46,14 @@ export function TrackButton({ productId, productName, href, source, label = "获
       }).catch(() => undefined);
     }
 
-    if (href.startsWith("#")) {
+    if (attributedHref.startsWith("#")) {
       event.preventDefault();
-      window.location.hash = href.slice(1);
+      window.location.hash = attributedHref.slice(1);
     }
   }
 
   return (
-    <a className="button green" href={href} onClick={handleClick} rel={isExternal ? "noreferrer" : undefined} target={isExternal ? "_blank" : undefined}>
+    <a className="button green" href={attributedHref} onClick={handleClick} rel={isExternal ? "noreferrer" : undefined} target={isExternal ? "_blank" : undefined}>
       <ExternalLink size={17} />
       {label}
     </a>

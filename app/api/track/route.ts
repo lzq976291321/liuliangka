@@ -16,6 +16,10 @@ type TrackEvent = {
   utmMedium?: string;
   utmCampaign?: string;
   utmContent?: string;
+  channel?: string;
+  channelKey?: string;
+  channelName?: string;
+  channelMatched?: boolean;
 };
 
 export async function POST(request: Request) {

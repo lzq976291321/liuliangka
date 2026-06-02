@@ -4,6 +4,13 @@ import { ArrowUp, ExternalLink, RotateCcw, Search, SlidersHorizontal, X } from "
 import { useEffect, useMemo, useRef, useState } from "react";
 import { OrderFrame } from "@/components/OrderFrame";
 import { RemoteImage } from "@/components/RemoteImage";
+import {
+  buildAttributedOrderUrl,
+  buildChannelInternalHref,
+  getChannelTrackFields,
+  type ChannelAttribution,
+  useChannelAttribution
+} from "@/lib/channel-attribution";
 import type { CardProduct, ProductCategory } from "@/lib/types";
 import { getBrowserVisitorId } from "@/lib/visitor-id";
 
@@ -183,7 +190,7 @@ function matchesAgeGroup(product: CatalogProduct, ageGroup: (typeof ageOptions)[
   return product.age1 <= maxAge && product.age2 >= minAge;
 }
 
-function trackApplyClick(product: CatalogProduct) {
+function trackApplyClick(product: CatalogProduct, attribution?: ChannelAttribution) {
   const query = new URLSearchParams(window.location.search);
   const payload = JSON.stringify({
     event: "apply_click",
@@ -196,7 +203,8 @@ function trackApplyClick(product: CatalogProduct) {
     utmSource: query.get("utm_source") || undefined,
     utmMedium: query.get("utm_medium") || undefined,
     utmCampaign: query.get("utm_campaign") || undefined,
-    utmContent: query.get("utm_content") || undefined
+    utmContent: query.get("utm_content") || undefined,
+    ...getChannelTrackFields(attribution)
   });
 
   if (navigator.sendBeacon) {
@@ -213,6 +221,7 @@ function trackApplyClick(product: CatalogProduct) {
 }
 
 export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
+  const channelAttribution = useChannelAttribution();
   const [keyword, setKeyword] = useState("");
   const [operator, setOperator] = useState<(typeof operatorOptions)[number]>("全部");
   const [area, setArea] = useState(allOption);
@@ -299,6 +308,7 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
   }, [ageGroup, area, dataBand, indexedProducts, keyword, operator, priceBand, term]);
   const visibleProducts = useMemo(() => filteredProducts.slice(0, visibleCount), [filteredProducts, visibleCount]);
   const hasMoreProducts = visibleProducts.length < filteredProducts.length;
+  const selectedOrderUrl = selectedProduct ? buildAttributedOrderUrl(selectedProduct.orderUrl, channelAttribution) : "";
 
   useEffect(() => {
     if (!areaOptions.includes(area)) {
@@ -393,7 +403,7 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
   }, [selectedProduct]);
 
   function openOrder(product: CatalogProduct) {
-    trackApplyClick(product);
+    trackApplyClick(product, channelAttribution);
     setSelectedProduct(product);
   }
 
@@ -590,7 +600,7 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
                       <ExternalLink size={17} />
                       去办理
                     </button>
-                    <a className="button small" href={`/card/${product.productID}`}>
+                    <a className="button small" href={buildChannelInternalHref(`/card/${product.productID}`, channelAttribution)}>
                       看详情
                     </a>
                   </div>
@@ -627,7 +637,7 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
                 </p>
               </div>
               <div className="order-modal-actions">
-                <a className="button small" href={selectedProduct.orderUrl} rel="noreferrer" target="_blank">
+                <a className="button small" href={selectedOrderUrl} rel="noreferrer" target="_blank">
                   新窗口打开
                 </a>
                 <button className="icon-button" onClick={() => setSelectedProduct(undefined)} type="button" aria-label="关闭办理弹窗">
@@ -635,7 +645,7 @@ export function ProductCatalogClient({ products }: ProductCatalogClientProps) {
                 </button>
               </div>
             </header>
-            <OrderFrame src={selectedProduct.orderUrl} title={`${selectedProduct.productName}办理`} />
+            <OrderFrame src={selectedOrderUrl} title={`${selectedProduct.productName}办理`} />
           </div>
         </div>
       ) : null}
