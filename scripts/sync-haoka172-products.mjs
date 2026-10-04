@@ -1,16 +1,17 @@
 import crypto from "node:crypto";
 import { readFileSync } from "node:fs";
-import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
+import { appendFile, chmod, copyFile, mkdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const PRODUCTS_URL = "https://haokaopenapi.lot-ml.com/api/order/GetProductsV2";
 const H5_BASE_URL = "https://haokawx.lot-ml.com";
 const DATA_DIR = path.join(process.cwd(), ".data");
 const SNAPSHOT_PATH = path.join(DATA_DIR, "haoka172-products-snapshot.json");
 const ORDER_LINKS_SNAPSHOT_PATH = path.join(DATA_DIR, "haoka172-order-links-snapshot.json");
+const CATALOG_SNAPSHOT_PATH = path.join(DATA_DIR, "haoka172-catalog-snapshot.json");
 const EVENTS_PATH = path.join(DATA_DIR, "haoka172-product-events.jsonl");
 const ACCOUNTS_CONFIG_PATH = path.join(process.cwd(), "config", "haoka172-accounts.json");
-const MISSING_INACTIVE_THRESHOLD = Number(process.env.HAOKA172_MISSING_INACTIVE_THRESHOLD ?? 3);
 const SYNC_MIN_INTERVAL_SECONDS = Number(process.env.HAOKA172_SYNC_MIN_INTERVAL_SECONDS ?? 1800);
 const REQUEST_TIMEOUT_MS = Number(process.env.HAOKA172_TIMEOUT_MS ?? 8000);
 const MAX_RETRIES = Number(process.env.HAOKA172_MAX_RETRIES ?? 2);
@@ -56,11 +57,11 @@ function getSelectedAccount() {
   const account = config.accounts?.find((item) => item.id === accountId);
 
   if (!account?.productUserId || !account.orderUserId) {
-    throw new Error(`172 账号配置无效：${accountId}`);
+    throw new Error("172 账号配置无效");
   }
 
   if (isPlaceholderSecret(account.productSecret)) {
-    throw new Error(`172 账号 ${accountId} 的 productSecret 仍是占位或脱敏值，请在 config/haoka172-accounts.json 填入真实 secret`);
+    throw new Error("172 商品接口密钥未配置有效值");
   }
 
   return account;
@@ -110,17 +111,18 @@ function detectProductCategory(text) {
   return "unknown";
 }
 
-function normalizeProduct(raw) {
+export function normalizeProduct(raw) {
   const productID = Number(raw.productID);
   const productName = raw.productName || `套餐 ${productID}`;
-  const skus = Array.isArray(raw.Skus) ? raw.Skus : [];
+  const rawSkus = raw.Skus ?? raw.skus;
+  const skus = Array.isArray(rawSkus) ? rawSkus : [];
   const text = [
     productName,
     raw.area || "",
     raw.disableArea || "",
-    raw.Taocan || "",
-    raw.Rule || "",
-    raw.PriceTime || "",
+    raw.Taocan || raw.taocan || "",
+    raw.Rule || raw.rule || "",
+    raw.PriceTime || raw.priceTime || "",
     skus.map((sku) => `${sku.SkuName || ""} ${sku.Desc || ""}`).join(" ")
   ].join(" ");
 
@@ -135,12 +137,12 @@ function normalizeProduct(raw) {
     operator: raw.operator || "",
     area: raw.area || "",
     disableArea: raw.disableArea || "",
-    BackMoneyType: raw.BackMoneyType || "",
-    Taocan: raw.Taocan || "",
-    Rule: raw.Rule || "",
-    Age1: raw.Age1 ?? null,
-    Age2: raw.Age2 ?? null,
-    PriceTime: raw.PriceTime || "",
+    BackMoneyType: raw.BackMoneyType || raw.backMoneyType || "",
+    Taocan: raw.Taocan || raw.taocan || "",
+    Rule: raw.Rule || raw.rule || "",
+    Age1: raw.Age1 ?? raw.age1 ?? null,
+    Age2: raw.Age2 ?? raw.age2 ?? null,
+    PriceTime: raw.PriceTime || raw.priceTime || "",
     Skus: skus.map((sku) => ({
       SkuID: sku.SkuID,
       SkuName: sku.SkuName || "",
@@ -160,7 +162,7 @@ function normalizeProduct(raw) {
   };
 }
 
-function diffFields(before, after) {
+export function diffFields(before, after) {
   if (!before) {
     return Object.keys(after);
   }
@@ -175,13 +177,15 @@ function diffFields(before, after) {
   return changed;
 }
 
-async function fetchProductsFrom172() {
-  const account = getSelectedAccount();
+export async function fetchProductsFrom172(options = {}) {
+  const account = options.account ?? getSelectedAccount();
   const userId = account.productUserId;
   const secret = account.productSecret;
-  const productId = account.productId ?? "";
+  const productId = options.productId ?? account.productId ?? "";
+  const maxRetries = options.maxRetries ?? MAX_RETRIES;
+  const fetchImpl = options.fetchImpl ?? fetch;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     const timestamp = Math.floor(Date.now() / 1000).toString();
     const userSign = md5(`ProductID=${productId}&Timestamp=${timestamp}&user_id=${userId}${secret}`);
     const form = new FormData();
@@ -189,30 +193,34 @@ async function fetchProductsFrom172() {
     form.set("Timestamp", timestamp);
     form.set("ProductID", productId);
     form.set("user_sign", userSign);
+    for (const [key, value] of Object.entries(options.extraParams ?? {})) form.set(key, String(value));
 
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(PRODUCTS_URL, {
+      const response = await fetchImpl(PRODUCTS_URL, {
         method: "POST",
         body: form,
         signal: controller.signal
       });
       const payload = await response.json().catch(() => null);
+      options.onDiagnostic?.(sourceDiagnostic("products", response, payload));
 
-      if (response.ok && payload?.code === 0 && Array.isArray(payload.data)) {
-        return payload.data.filter((item) => Number.isFinite(Number(item.productID)));
+      if (response.ok && payload?.code === 0 && Array.isArray(payload.data) && payload.data.length) {
+        const products = payload.data.filter((item) => Number.isInteger(Number(item.productID)) && Number(item.productID) > 0);
+        if (products.length !== payload.data.length) throw new Error("商品接口包含无效商品标识，保留上次有效快照");
+        return products;
       }
 
-      if (attempt < MAX_RETRIES && shouldRetryStatus(response.status)) {
+      if (attempt < maxRetries && shouldRetryStatus(response.status)) {
         await sleep(retryDelayMs(response, attempt));
         continue;
       }
 
-      throw new Error(`商品同步失败：HTTP ${response.status}，code=${payload?.code}，message=${payload?.message}`);
+      throw new Error(`商品同步失败：HTTP ${response.status}，code=${payload?.code ?? "unknown"}，数据为空或业务失败`);
     } catch (error) {
-      if (attempt < MAX_RETRIES) {
+      if (attempt < maxRetries) {
         await sleep(retryDelayMs(undefined, attempt));
         continue;
       }
@@ -284,10 +292,12 @@ function toOrderLink(item) {
   };
 }
 
-async function fetchOrderLinks() {
-  const userId = getOrderUserId();
+export async function fetchOrderLinks(options = {}) {
+  const userId = options.account?.orderUserId ?? getOrderUserId();
+  const maxRetries = options.maxRetries ?? MAX_RETRIES;
+  const fetchImpl = options.fetchImpl ?? fetch;
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
     const body = new URLSearchParams({
       title: "",
       PriceTime: "优惠时间",
@@ -297,11 +307,12 @@ async function fetchOrderLinks() {
       City: "全部",
       redbook: ""
     });
+    for (const [key, value] of Object.entries(options.extraParams ?? {})) body.set(key, String(value));
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? REQUEST_TIMEOUT_MS);
 
     try {
-      const response = await fetch(`${H5_BASE_URL}/ProductEn/Index2/${encodeURIComponent(userId)}`, {
+      const response = await fetchImpl(`${H5_BASE_URL}/ProductEn/Index2/${encodeURIComponent(userId)}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
@@ -312,25 +323,25 @@ async function fetchOrderLinks() {
         signal: controller.signal
       });
       const payload = await response.json().catch(() => null);
+      options.onDiagnostic?.(sourceDiagnostic("orderCatalog", response, payload));
 
-      if (response.ok && Array.isArray(payload?.data)) {
+      if (response.ok && payload?.code === 0 && Array.isArray(payload?.data) && payload.data.length) {
+        const links = payload.data.map(toOrderLink).filter((link) => link && link.pudId && link.userId).sort((a, b) => a.productID - b.productID);
+        if (!links.length) throw new Error("办理接口无有效办理链接，保留上次有效快照");
         return {
           userId,
-          links: payload.data
-            .map(toOrderLink)
-            .filter(Boolean)
-            .sort((a, b) => a.productID - b.productID)
+          links
         };
       }
 
-      if (attempt < MAX_RETRIES && shouldRetryStatus(response.status)) {
+      if (attempt < maxRetries && shouldRetryStatus(response.status)) {
         await sleep(retryDelayMs(response, attempt));
         continue;
       }
 
-      throw new Error(`办理链接同步失败：HTTP ${response.status}，message=${payload?.message}`);
+      throw new Error(`办理链接同步失败：HTTP ${response.status}，code=${payload?.code ?? "unknown"}，数据为空或业务失败`);
     } catch (error) {
-      if (attempt < MAX_RETRIES) {
+      if (attempt < maxRetries) {
         await sleep(retryDelayMs(undefined, attempt));
         continue;
       }
@@ -343,9 +354,10 @@ async function fetchOrderLinks() {
   throw new Error("办理链接同步失败：超过最大重试次数");
 }
 
-async function readSnapshot() {
+export async function readSnapshot(dataDir = DATA_DIR) {
   try {
-    return JSON.parse(await readFile(SNAPSHOT_PATH, "utf8"));
+    const bundle = await readFile(path.join(dataDir, "haoka172-catalog-snapshot.json"), "utf8").then(JSON.parse).catch(() => undefined);
+    return bundle?.productsSnapshot ?? JSON.parse(await readFile(path.join(dataDir, "haoka172-products-snapshot.json"), "utf8"));
   } catch {
     return {
       version: 1,
@@ -367,7 +379,7 @@ function createEvent(type, product, details = {}) {
   };
 }
 
-function buildNextSnapshot(previous, normalizedProducts, syncedAt) {
+export function buildNextSnapshot(previous, normalizedProducts, syncedAt) {
   const events = [];
   const currentMap = new Map(normalizedProducts.map((product) => [String(product.productID), product]));
   const products = { ...(previous.products || {}) };
@@ -386,6 +398,7 @@ function buildNextSnapshot(previous, normalizedProducts, syncedAt) {
         status: currentStatus,
         firstSeenAt: syncedAt,
         lastSeenAt: syncedAt,
+        presence: "confirmed",
         missingCount: 0,
         hash: product.hash,
         compareFields: product.compareFields,
@@ -424,6 +437,7 @@ function buildNextSnapshot(previous, normalizedProducts, syncedAt) {
       category: product.category,
       status: currentStatus,
       lastSeenAt: syncedAt,
+      presence: "confirmed",
       missingCount: 0,
       hash: product.hash,
       compareFields: product.compareFields,
@@ -437,22 +451,20 @@ function buildNextSnapshot(previous, normalizedProducts, syncedAt) {
     }
 
     const missingCount = (previousProduct.missingCount ?? 0) + 1;
-    const status = missingCount >= MISSING_INACTIVE_THRESHOLD ? "inactive_missing" : "missing";
+    // 接口没有分页/总数契约。列表缺失不证明下架，也不能刷新其事实时间。
+    const status = previousProduct.status;
     const productForEvent = {
       productID: previousProduct.productID,
       productName: previousProduct.productName,
       category: previousProduct.category
     };
 
-    if (previousProduct.status !== "missing" && previousProduct.status !== "inactive_missing") {
-      events.push(createEvent("product_missing", productForEvent, { missingCount, status }));
-    } else if (previousProduct.status !== "inactive_missing" && status === "inactive_missing") {
-      events.push(createEvent("product_inactive_missing", productForEvent, { missingCount, status }));
-    }
+    if (previousProduct.presence !== "unconfirmed") events.push(createEvent("product_missing", productForEvent, { missingCount, status, confirmedInactive: false }));
 
     products[id] = {
       ...previousProduct,
       status,
+      presence: "unconfirmed",
       missingCount,
       lastMissingAt: syncedAt
     };
@@ -485,6 +497,101 @@ function countBy(products, field) {
   }, {});
 }
 
+function sourceDiagnostic(endpoint, response, payload) {
+  const pagination = {};
+  for (const key of ["total", "totalCount", "count", "page", "pageIndex", "pageSize", "hasMore", "hasNextPage"]) {
+    if (typeof payload?.[key] === "number" || typeof payload?.[key] === "boolean") pagination[key] = payload[key];
+  }
+  return {
+    endpoint,
+    checkedAt: new Date().toISOString(),
+    httpStatus: response.status,
+    businessCode: typeof payload?.code === "number" ? payload.code : null,
+    recordCount: Array.isArray(payload?.data) ? payload.data.length : 0,
+    responseDate: response.headers.get("date"),
+    pagination
+  };
+}
+
+export function validateCatalogPair(rawProducts, orderLinks) {
+  if (!rawProducts?.length || !orderLinks?.links?.length) throw new Error("商品或办理目录为空，保留上次有效快照");
+  if (orderLinks.links.some((link) => !link.shareUrl || !link.pudId || !link.userId)) throw new Error("办理目录缺少有效办理参数");
+  const productIds = rawProducts.map((product) => Number(product.productID));
+  const linkIds = orderLinks.links.map((link) => Number(link.productID));
+  if ([...productIds, ...linkIds].some((id) => !Number.isInteger(id) || id <= 0)) throw new Error("源数据包含无效商品标识");
+  if (new Set(productIds).size !== productIds.length || new Set(linkIds).size !== linkIds.length) throw new Error("源数据包含重复商品标识，不能确认完整性");
+  const products = new Set(productIds);
+  const overlapIds = linkIds.filter((id) => products.has(id));
+  if (!overlapIds.length) throw new Error("两源没有匹配商品，保留上次有效快照");
+  return { productCount: productIds.length, orderLinkCount: linkIds.length, overlapCount: overlapIds.length, overlapIds, listingCompleteness: "unverified" };
+}
+
+export async function atomicWriteJson(filePath, value) {
+  const temporaryPath = `${filePath}.${crypto.randomUUID()}.tmp`;
+  try {
+    await writeFile(temporaryPath, JSON.stringify(value, null, 2), { encoding: "utf8", mode: 0o600, flag: "wx" });
+    await rename(temporaryPath, filePath);
+  } finally {
+    await unlink(temporaryPath).catch(() => undefined);
+  }
+}
+
+export async function readOrderSnapshot(dataDir = DATA_DIR) {
+  const bundle = await readFile(path.join(dataDir, "haoka172-catalog-snapshot.json"), "utf8").then(JSON.parse).catch(() => undefined);
+  return bundle?.orderLinksSnapshot ?? await readFile(path.join(dataDir, "haoka172-order-links-snapshot.json"), "utf8").then(JSON.parse).catch(() => ({ links: [] }));
+}
+
+export async function saveSourceSnapshots(rawProducts, orderLinks, options = {}) {
+  // 必须在创建任何新快照前完成两源验证。
+  const validation = validateCatalogPair(rawProducts, orderLinks);
+  const dataDir = options.dataDir ?? DATA_DIR;
+  const syncedAt = options.syncedAt ?? new Date().toISOString();
+  const [previous, previousOrders] = await Promise.all([readSnapshot(dataDir), readOrderSnapshot(dataDir)]);
+  const byProductId = new Map(rawProducts.map((product) => [Number(product.productID), product]));
+  for (const product of options.verifiedProducts ?? []) byProductId.set(Number(product.productID), product);
+  const { snapshot, events } = buildNextSnapshot(previous, [...byProductId.values()].map(normalizeProduct), syncedAt);
+  snapshot.totalLatest = rawProducts.length;
+  snapshot.listingCompleteness = validation.listingCompleteness;
+  snapshot.verifiedAdditionalCount = byProductId.size - rawProducts.length;
+  const links = new Map((previousOrders.userId === orderLinks.userId ? previousOrders.links ?? [] : []).map((link) => [link.productID, { ...link, updatedAt: link.updatedAt ?? previousOrders.syncedAt, presence: "unconfirmed" }]));
+  for (const link of orderLinks.links) links.set(link.productID, { ...link, updatedAt: syncedAt, presence: "confirmed" });
+  const orderLinksSnapshot = { version: 2, syncedAt, userId: orderLinks.userId, total: links.size, totalLatest: orderLinks.links.length, listingCompleteness: "unverified", links: [...links.values()] };
+  await mkdir(dataDir, { recursive: true });
+  const backupDir = path.join(dataDir, "backups", `${syncedAt.replace(/[:.]/g, "-")}-${crypto.randomUUID().slice(0, 8)}`);
+  await mkdir(backupDir, { recursive: true });
+  for (const name of ["haoka172-products-snapshot.json", "haoka172-order-links-snapshot.json", "haoka172-catalog-snapshot.json"]) {
+    try {
+      await copyFile(path.join(dataDir, name), path.join(backupDir, name));
+      await chmod(path.join(backupDir, name), 0o600);
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+    }
+  }
+  const bundle = { version: 2, syncedAt, productsSnapshot: snapshot, orderLinksSnapshot };
+  await atomicWriteJson(path.join(dataDir, "haoka172-catalog-snapshot.json"), bundle);
+  // 运行时只认上面一次原子切换的bundle；下列单文件为旧工具兼容导出。
+  const compatibilityWrites = await Promise.allSettled([
+    atomicWriteJson(path.join(dataDir, "haoka172-products-snapshot.json"), snapshot),
+    atomicWriteJson(path.join(dataDir, "haoka172-order-links-snapshot.json"), orderLinksSnapshot)
+  ]);
+  let eventsWritten = true;
+  if (events.length) {
+    try { await appendFile(path.join(dataDir, "haoka172-product-events.jsonl"), events.map((event) => JSON.stringify(event)).join("\n") + "\n", { encoding: "utf8", mode: 0o600 }); }
+    catch { eventsWritten = false; }
+  }
+  return {
+    ...validation,
+    syncedAt,
+    backupDir,
+    activeHistoricalCount: Object.values(snapshot.products).filter((product) => product.status === "active").length,
+    unconfirmedHistoricalCount: Object.values(snapshot.products).filter((product) => product.presence === "unconfirmed").length,
+    verifiedAdditionalCount: snapshot.verifiedAdditionalCount,
+    compatibilityWritesOk: compatibilityWrites.every((result) => result.status === "fulfilled"),
+    events: events.length,
+    eventsWritten
+  };
+}
+
 async function main() {
   const syncedAt = new Date().toISOString();
   const previous = await readSnapshot();
@@ -500,50 +607,14 @@ async function main() {
     return;
   }
 
-  const rawProducts = await fetchProductsFrom172();
-  const orderLinks = await fetchOrderLinks();
-  const normalizedProducts = rawProducts.map(normalizeProduct);
-  const { snapshot, events } = buildNextSnapshot(previous, normalizedProducts, syncedAt);
-
-  await mkdir(DATA_DIR, { recursive: true });
-  await writeFile(SNAPSHOT_PATH, JSON.stringify(snapshot, null, 2), "utf8");
-  await writeFile(
-    ORDER_LINKS_SNAPSHOT_PATH,
-    JSON.stringify(
-      {
-        version: 1,
-        syncedAt,
-        userId: orderLinks.userId,
-        total: orderLinks.links.length,
-        links: orderLinks.links
-      },
-      null,
-      2
-    ),
-    "utf8"
-  );
-  await writeEvents(events);
-
-  const currentCategoryCount = countBy(Object.fromEntries(normalizedProducts.map((product) => [product.productID, product])), "category");
-  const statusCount = countBy(snapshot.products, "status");
-
-  console.log("商品同步完成");
-  console.log("本次返回商品:", normalizedProducts.length);
-  console.log("办理入口商品:", orderLinks.links.length);
-  console.log("当前品类:", JSON.stringify(currentCategoryCount));
-  console.log("历史状态:", JSON.stringify(statusCount));
-  console.log("新增事件:", events.length);
-  for (const event of events.slice(0, 8)) {
-    console.log(`- ${event.type}: ${event.productID} ${event.productName}`);
-  }
-  if (events.length > 8) {
-    console.log(`- 还有 ${events.length - 8} 条事件，见 ${EVENTS_PATH}`);
-  }
-  console.log("快照:", SNAPSHOT_PATH);
-  console.log("办理入口快照:", ORDER_LINKS_SNAPSHOT_PATH);
+  const [rawProducts, orderLinks] = await Promise.all([fetchProductsFrom172(), fetchOrderLinks()]);
+  const result = await saveSourceSnapshots(rawProducts, orderLinks, { syncedAt: new Date().toISOString() });
+  console.log("商品同步完成", JSON.stringify(result));
 }
 
-main().catch((error) => {
-  console.error(error.message);
-  process.exitCode = 1;
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  main().catch((error) => {
+    console.error(error.message);
+    process.exitCode = 1;
+  });
+}

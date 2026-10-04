@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { getDefaultHaoka172Account, isPlaceholderHaoka172Secret } from "@/lib/haoka172-accounts";
 import { deriveCities, deriveScenes, detectProductCategory, parseCallMinutes, parseData, parseIsLongTerm, parseMonthlyRent, parsePriceTime } from "@/lib/product-parser";
-import type { CardProduct, Operator } from "@/lib/types";
+import type { CardProduct, CatalogSourceState, Operator } from "@/lib/types";
 
 type Product172 = {
   productID: number;
@@ -41,12 +41,20 @@ type ProductsResponse = {
 
 const PRODUCTS_URL = "https://haokaopenapi.lot-ml.com/api/order/GetProductsV2";
 const SNAPSHOT_PATH = path.join(process.cwd(), ".data", "haoka172-products-snapshot.json");
+const CATALOG_SNAPSHOT_PATH = path.join(process.cwd(), ".data", "haoka172-catalog-snapshot.json");
 const fallbackImage = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80";
 const productCache = new Map<string, { expiresAt: number; products: CardProduct[] }>();
 const productInFlight = new Map<string, Promise<CardProduct[]>>();
+let productsSourceState: CatalogSourceState = { status: "fallback" };
+
+function recordSourceState(status: CatalogSourceState["status"], products: CardProduct[]) {
+  productsSourceState = { status, checkedAt: new Date().toISOString(), updatedAt: products.map((product) => product.updatedAt).filter((value): value is string => Boolean(value)).sort().at(-1) };
+}
+
+export function getProductsSourceState() { return { ...productsSourceState }; }
 
 function getCacheTtlMs() {
-  return Number(process.env.HAOKA172_CACHE_TTL_SECONDS ?? 3600) * 1000;
+  return Math.min(1800, Math.max(1, Number(process.env.HAOKA172_CACHE_TTL_SECONDS) || 1800)) * 1000;
 }
 
 function getTimeoutMs() {
@@ -58,8 +66,7 @@ function getMaxRetries() {
 }
 
 function getSnapshotMaxAgeMs() {
-  // 商品由每日构建同步，运行时优先用快照，避免首屏被上游接口拖慢。
-  return Number(process.env.HAOKA172_SNAPSHOT_MAX_AGE_SECONDS ?? 129600) * 1000;
+  return Math.min(1800, Math.max(1, Number(process.env.HAOKA172_SNAPSHOT_MAX_AGE_SECONDS) || 1800)) * 1000;
 }
 
 function md5(value: string) {
@@ -90,7 +97,7 @@ function retryDelayMs(response: Response | undefined, attempt: number) {
   return Math.min(5000, 400 * 2 ** attempt);
 }
 
-function normalize172Product(product: Product172): CardProduct {
+export function normalize172Product(product: Product172, updatedAt?: string): CardProduct {
   const productName = product.productName || `套餐 ${product.productID}`;
   const taocan = product.Taocan || product.taocan || "";
   const rule = product.Rule || product.rule || "";
@@ -98,8 +105,8 @@ function normalize172Product(product: Product172): CardProduct {
   const area = product.area || "待确认";
   const backMoneyType = product.BackMoneyType || product.backMoneyType || "待确认";
   const operator = product.operator || "电信";
-  const age1 = product.Age1 || product.age1 || 18;
-  const age2 = product.Age2 || product.age2 || 65;
+  const age1 = product.Age1 ?? product.age1;
+  const age2 = product.Age2 ?? product.age2;
   const skus = product.Skus ?? product.skus ?? [];
   const normalizedSkus = Array.isArray(skus) ? skus : [];
   const fullText = [
@@ -113,14 +120,23 @@ function normalize172Product(product: Product172): CardProduct {
   ].join(" ");
   const availabilityText = [productName, area, taocan, rule, rawPriceTime, normalizedSkus.map((sku) => `${sku.SkuName} ${sku.Desc}`).join(" ")].join(" ");
   const priceTime = rawPriceTime || parsePriceTime(fullText, "待确认");
-  const monthlyRent = parseMonthlyRent(fullText, 39);
-  const data = parseData(fullText, 100);
-  const callMinutes = parseCallMinutes(fullText, 0);
-  const isLongTerm = parseIsLongTerm(fullText);
+  const monthlyRent = parseMonthlyRent(fullText);
+  const data = parseData(fullText);
+  const callMinutes = parseCallMinutes(fullText);
+  const isLongTerm = parseIsLongTerm(priceTime) ?? parseIsLongTerm(fullText);
   const category = detectProductCategory(fullText);
 
   return {
     productID: product.productID,
+    updatedAt,
+    factSources: Object.fromEntries(Object.entries({
+      monthlyRent,
+      dataGB: data.total,
+      generalDataGB: data.general,
+      directedDataGB: data.directed,
+      callMinutes,
+      isLongTerm
+    }).filter(([, value]) => value !== undefined).map(([field]) => [field, "套餐文本"])),
     productName,
     mainPic: product.mainPic || product.littlepicture || fallbackImage,
     area,
@@ -133,6 +149,7 @@ function normalize172Product(product: Product172): CardProduct {
     backMoneyType,
     taocan,
     rule,
+    eligibilityText: availabilityText,
     age1,
     age2,
     priceTime,
@@ -169,12 +186,14 @@ function normalize172Product(product: Product172): CardProduct {
 
 async function readProductsFromSnapshot(productId: string, options: { allowStale?: boolean } = {}): Promise<CardProduct[] | undefined> {
   try {
-    const snapshot = JSON.parse(await readFile(SNAPSHOT_PATH, "utf8")) as {
+    const bundle = await readFile(CATALOG_SNAPSHOT_PATH, "utf8").then((data) => JSON.parse(data)).catch(() => undefined);
+    const snapshot = (bundle?.productsSnapshot ?? JSON.parse(await readFile(SNAPSHOT_PATH, "utf8"))) as {
       syncedAt?: string;
       products?: Record<
         string,
         {
           status?: string;
+          lastSeenAt?: string;
           raw?: Product172;
         }
       >;
@@ -182,13 +201,13 @@ async function readProductsFromSnapshot(productId: string, options: { allowStale
     const syncedAtMs = snapshot.syncedAt ? Date.parse(snapshot.syncedAt) : 0;
     const isFresh = syncedAtMs > 0 && Date.now() - syncedAtMs <= getSnapshotMaxAgeMs();
 
-    if (!isFresh && !options.allowStale && process.env.HAOKA172_ALLOW_STALE_SNAPSHOT !== "1") {
+    if (!isFresh && !options.allowStale) {
       return undefined;
     }
 
     const products = Object.values(snapshot.products ?? {})
       .filter((item) => item.status === "active" && item.raw)
-      .map((item) => normalize172Product(item.raw as Product172));
+      .map((item) => normalize172Product(item.raw as Product172, item.lastSeenAt ?? snapshot.syncedAt));
 
     if (!products.length) {
       return undefined;
@@ -220,19 +239,12 @@ function createProductsForm(userId: string, secret: string, productId: string) {
 }
 
 async function postProducts(userId: string, secret: string, productId: string) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), getTimeoutMs());
-
-  try {
-    return await fetch(PRODUCTS_URL, {
+    return fetch(PRODUCTS_URL, {
       method: "POST",
       body: createProductsForm(userId, secret, productId),
-      signal: controller.signal,
-      next: { revalidate: 3600 }
+      signal: AbortSignal.timeout(getTimeoutMs()),
+      cache: "no-store"
     });
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 async function fetchProductsFrom172(productId: string): Promise<CardProduct[]> {
@@ -242,7 +254,7 @@ async function fetchProductsFrom172(productId: string): Promise<CardProduct[]> {
   const targetProductId = productId || account.productId || "";
 
   if (!userId || isPlaceholderHaoka172Secret(secret)) {
-    return (await readProductsFromSnapshot(productId, { allowStale: true })) ?? [];
+    return [];
   }
 
   let lastResponse: Response | undefined;
@@ -263,11 +275,16 @@ async function fetchProductsFrom172(productId: string): Promise<CardProduct[]> {
 
       const payload = (await response.json()) as ProductsResponse;
       if (payload.code !== 0 || !payload.data?.length) {
-        lastError = new Error(`商品接口业务失败：code=${payload.code} message=${payload.message}`);
+        lastError = new Error(`商品接口业务失败：code=${payload.code}`);
+        break;
+      }
+      if (payload.data.some((product) => !Number.isInteger(Number(product.productID)) || Number(product.productID) <= 0) || new Set(payload.data.map((product) => Number(product.productID))).size !== payload.data.length) {
+        lastError = new Error("商品接口标识无效或重复");
         break;
       }
 
-      return payload.data.map(normalize172Product);
+      const updatedAt = new Date().toISOString();
+      return payload.data.map((product) => normalize172Product(product, updatedAt));
     } catch (error) {
       lastError = error;
       if (attempt < getMaxRetries()) {
@@ -285,7 +302,7 @@ async function fetchProductsFrom172(productId: string): Promise<CardProduct[]> {
       error: lastError instanceof Error ? lastError.message : String(lastError ?? "")
     })
   );
-  return (await readProductsFromSnapshot(productId, { allowStale: true })) ?? [];
+  return [];
 }
 
 export async function getProductsFrom172(productId = ""): Promise<CardProduct[]> {
@@ -299,15 +316,18 @@ export async function getProductsFrom172(productId = ""): Promise<CardProduct[]>
 
   const snapshotProducts = await readProductsFromSnapshot(productId);
   if (snapshotProducts?.length) {
+    recordSourceState("snapshot", snapshotProducts);
     productCache.set(cacheKey, {
       products: snapshotProducts,
-      expiresAt: Date.now() + getCacheTtlMs()
+      expiresAt: Math.min(Date.now() + getCacheTtlMs(), Math.max(...snapshotProducts.map((product) => Date.parse(product.updatedAt ?? "") + getSnapshotMaxAgeMs()).filter(Number.isFinite)))
     });
     return snapshotProducts;
   }
 
   if (process.env.HAOKA172_DISABLE_LIVE_FETCH === "1") {
-    return (await readProductsFromSnapshot(productId, { allowStale: true })) ?? [];
+    const products = (await readProductsFromSnapshot(productId, { allowStale: true })) ?? [];
+    recordSourceState("fallback", products);
+    return products;
   }
 
   const pending = productInFlight.get(cacheKey);
@@ -316,15 +336,21 @@ export async function getProductsFrom172(productId = ""): Promise<CardProduct[]>
   }
 
   const request = fetchProductsFrom172(productId)
-    .then((products) => {
-      const result = products.length ? products : cached?.products ?? [];
+    .then(async (products) => {
+      const previous = cached?.products ?? (await readProductsFromSnapshot(productId, { allowStale: true })) ?? [];
+      // 无分页总数契约时，列表缺失不等于下架；保留旧条目的旧更新时间。
+      const merged = new Map(previous.map((product) => [product.productID, product]));
+      for (const product of products) merged.set(product.productID, product);
+      const result = products.length ? [...merged.values()] : previous;
+      recordSourceState(products.length ? "live" : "fallback", result);
       productCache.set(cacheKey, {
         products: result,
-        expiresAt: Date.now() + getCacheTtlMs()
+        expiresAt: Date.now() + (products.length ? getCacheTtlMs() : 60_000)
       });
       return result;
     })
     .catch((error) => {
+      recordSourceState("fallback", cached?.products ?? []);
       console.warn("haoka172_cache_fallback", error instanceof Error ? error.message : String(error));
       return cached?.products ?? [];
     })
@@ -338,6 +364,10 @@ export async function getProductsFrom172(productId = ""): Promise<CardProduct[]>
 
 export async function getAllProducts() {
   return getProductsFrom172("");
+}
+
+export async function getLastValidProductSnapshot() {
+  return (await readProductsFromSnapshot("", { allowStale: true })) ?? [];
 }
 
 export async function getProductById(productId: string) {

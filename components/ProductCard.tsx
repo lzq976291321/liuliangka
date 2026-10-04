@@ -1,16 +1,18 @@
 import { BadgeCheck, RadioTower } from "lucide-react";
 import Link from "next/link";
 import { RemoteImage } from "@/components/RemoteImage";
+import { formatAge, formatValue } from "@/lib/product-display";
 import type { CardProduct } from "@/lib/types";
 
 type ProductCardProps = {
   product: CardProduct;
   score?: number;
   reasons?: string[];
+  detailQuery?: string;
 };
 
-export function ProductCard({ product, score, reasons = [] }: ProductCardProps) {
-  const generalDataGB = product.generalDataGB ?? product.dataGB;
+export function ProductCard({ product, score, reasons = [], detailQuery = "" }: ProductCardProps) {
+  const generalDataGB = product.generalDataGB;
 
   return (
     <article className="product-card">
@@ -27,15 +29,15 @@ export function ProductCard({ product, score, reasons = [] }: ProductCardProps) 
         <h3 className="product-name">{product.productName}</h3>
         <div className="spec-row">
           <div className="spec">
-            <strong>{product.monthlyRent}元</strong>
+            <strong>{formatValue(product.monthlyRent, "元")}</strong>
             <span>月租</span>
           </div>
           <div className="spec">
-            <strong>{generalDataGB}G</strong>
+            <strong>{formatValue(generalDataGB, "G")}</strong>
             <span>通用流量</span>
           </div>
           <div className="spec">
-            <strong>{product.age1}-{product.age2}</strong>
+            <strong>{formatAge(product.age1, product.age2)}</strong>
             <span>年龄</span>
           </div>
         </div>
@@ -51,7 +53,7 @@ export function ProductCard({ product, score, reasons = [] }: ProductCardProps) 
           </div>
         ) : null}
         <div className="product-actions">
-          <Link className="button small primary" href={`/card/${product.productID}`}>
+          <Link className="button small primary" href={`/card/${product.productID}${detailQuery ? `?${detailQuery}` : ""}`}>
             <RadioTower size={16} />
             看详情
           </Link>

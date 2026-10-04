@@ -2,8 +2,8 @@
 
 import { ExternalLink } from "lucide-react";
 import type { MouseEvent } from "react";
-import { buildAttributedOrderUrl, getChannelTrackFields, useChannelAttribution } from "@/lib/channel-attribution";
-import { getBrowserVisitorId } from "@/lib/visitor-id";
+import { buildAttributedOrderUrl, useChannelAttribution } from "@/lib/channel-attribution";
+import { trackEvent } from "@/lib/track-event";
 
 type TrackButtonProps = {
   productId: number;
@@ -19,32 +19,7 @@ export function TrackButton({ productId, productName, href, source, label = "获
   const isExternal = /^https?:\/\//.test(attributedHref);
 
   function handleClick(event: MouseEvent<HTMLAnchorElement>) {
-    const query = new URLSearchParams(window.location.search);
-    const payload = JSON.stringify({
-      event: "apply_click",
-      productId,
-      productName,
-      source,
-      userId: getBrowserVisitorId(),
-      path: window.location.pathname,
-      referrer: document.referrer || undefined,
-      utmSource: query.get("utm_source") || undefined,
-      utmMedium: query.get("utm_medium") || undefined,
-      utmCampaign: query.get("utm_campaign") || undefined,
-      utmContent: query.get("utm_content") || undefined,
-      ...getChannelTrackFields(channelAttribution)
-    });
-
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon("/api/track", new Blob([payload], { type: "application/json" }));
-    } else {
-      fetch("/api/track", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: payload,
-        keepalive: true
-      }).catch(() => undefined);
-    }
+    trackEvent("apply_click", { productId, productName, source }, channelAttribution);
 
     if (attributedHref.startsWith("#")) {
       event.preventDefault();

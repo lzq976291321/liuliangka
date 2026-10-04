@@ -4,10 +4,14 @@ import {
   deriveScenes,
   detectProductCategory,
   parseCallMinutes,
+  parseAverageMonthlyCost,
+  parseBillingPeriodMonths,
   parseData,
   parseFirstRechargeAmount,
   parseIsLongTerm,
   parseMonthlyRent,
+  parsePostPromoMonthlyRent,
+  parsePrepaidAmount,
   parsePriceTime
 } from "@/lib/product-parser";
 import type { CardProduct, ProductStatus } from "@/lib/types";
@@ -32,7 +36,7 @@ function cleanConsumerText(value: string) {
   return value
     .split(/(?<=[。；;])|(?<=，)|(?<=,)/)
     .map((part) => part.trim())
-    .filter((part) => part && !/(前端|禁止|推广|公域|私域|店铺|直播|佣金|返佣|结算|三无|三照|渠道|原产品标记|审核失败|更改|补贴)/.test(part))
+    .filter((part) => part && (/禁止|禁发|不发|不支持|不可|不能|仅限|限制|限办|年龄|首充|实名|激活|注销|违约/.test(part) || !/(前端|推广|公域|私域|佣金|返佣|结算|原产品标记)/.test(part)))
     .join("")
     .replace(/，。/g, "。")
     .replace(/,{2,}/g, ",")
@@ -101,33 +105,52 @@ export function enrichProduct(product: CardProduct): CardProduct {
   const override = getProductOverride(product.productID);
   const text = productText(product);
   const category = override?.category ?? product.category ?? detectProductCategory(text);
-  const monthlyRent = parseMonthlyRent(text, product.monthlyRent);
+  const hasRentAmbiguity = product.validationIssues?.some((issue) => /^月租(?:冲突|金额含义待核对)/.test(issue));
+  const monthlyRent = hasRentAmbiguity ? undefined : product.monthlyRent ?? parseMonthlyRent(text);
+  const postPromoMonthlyRent = product.postPromoMonthlyRent ?? parsePostPromoMonthlyRent(text);
+  const averageMonthlyCost = product.averageMonthlyCost ?? parseAverageMonthlyCost(text);
+  const prepaidAmount = product.prepaidAmount ?? parsePrepaidAmount(text);
+  const billingPeriodMonths = product.billingPeriodMonths ?? parseBillingPeriodMonths(text);
   const data = parseData(text, product.dataGB);
-  const callMinutes = parseCallMinutes(text, product.callMinutes);
+  const dataGB = product.dataGB ?? data.total;
+  const callMinutes = product.callMinutes ?? parseCallMinutes(text);
   const priceTime = product.priceTime === "待确认" ? parsePriceTime(text, product.priceTime) : product.priceTime;
-  const isLongTerm = product.isLongTerm ?? parseIsLongTerm(`${priceTime} ${product.taocan} ${product.rule}`);
+  const isLongTerm = product.isLongTerm ?? parseIsLongTerm(priceTime) ?? parseIsLongTerm(`${product.taocan} ${product.rule}`);
   const parsedScenes = deriveScenes({
     text,
     monthlyRent,
-    dataGB: data.total,
+    dataGB,
     callMinutes,
     age1: product.age1,
     age2: product.age2,
     isLongTerm
   });
   const status: ProductStatus = override?.hidden ? "hidden" : override?.status ?? product.status ?? (product.flag ? "active" : "inactive");
+  const firstRechargeAmount = product.firstRechargeAmount ?? parseFirstRechargeAmount(text);
+  const factSources = { ...product.factSources };
+  for (const [field, value] of Object.entries({ monthlyRent, postPromoMonthlyRent, averageMonthlyCost, prepaidAmount, billingPeriodMonths, dataGB, generalDataGB: product.generalDataGB ?? data.general, directedDataGB: product.directedDataGB ?? data.directed, callMinutes, firstRechargeAmount })) {
+    if (value !== undefined && !factSources[field]) {
+      factSources[field] = product[field as keyof CardProduct] !== undefined ? "商品资料" : "套餐文本";
+    }
+  }
 
   return {
     ...product,
     productName: cleanProductName(product.productName),
     taocan: cleanConsumerText(product.taocan),
     rule: cleanConsumerText(product.rule),
+    eligibilityText: product.eligibilityText ?? [product.productName, product.area, product.disableArea.join("、"), product.taocan, product.rule, product.skus.map((sku) => `${sku.name} ${sku.description}`).join(" ")].join(" "),
     monthlyRent,
-    dataGB: data.total,
+    postPromoMonthlyRent,
+    averageMonthlyCost,
+    prepaidAmount,
+    billingPeriodMonths,
+    dataGB,
     generalDataGB: product.generalDataGB ?? data.general,
     directedDataGB: product.directedDataGB ?? data.directed,
     callMinutes,
-    firstRechargeAmount: product.firstRechargeAmount ?? parseFirstRechargeAmount(text),
+    firstRechargeAmount,
+    factSources,
     category,
     status,
     isLongTerm,
@@ -145,7 +168,7 @@ export function enrichProducts(products: CardProduct[]) {
 }
 
 export function getRecommendableProducts(products: CardProduct[]) {
-  return enrichProducts(products).filter((product) => product.category === "mobile-card" && product.status === "active" && product.dataGB >= 30);
+  return enrichProducts(products).filter((product) => product.category === "mobile-card" && product.status === "active" && (product.generalDataGB ?? product.dataGB ?? 0) >= 30);
 }
 
 export function isCityCompatible(product: CardProduct, city?: string) {
@@ -185,7 +208,7 @@ export function isCityCompatible(product: CardProduct, city?: string) {
 
 export function getCatalogStats(products: CardProduct[]) {
   const enriched = enrichProducts(products);
-  const recommendable = enriched.filter((product) => product.category === "mobile-card" && product.status === "active" && product.dataGB >= 30);
+  const recommendable = enriched.filter((product) => product.category === "mobile-card" && product.status === "active" && (product.generalDataGB ?? product.dataGB ?? 0) >= 30);
 
   return {
     total: enriched.length,

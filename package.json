@@ -10,7 +10,10 @@
     "check:products": "node scripts/check-haoka172-secret.mjs",
     "import:netlify-config": "node scripts/import-netlify-haoka172-config.mjs",
     "sync:products": "node scripts/sync-haoka172-products.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "report:funnel": "node scripts/report-funnel.mjs",
+    "audit:sources": "tsx scripts/audit-haoka172-source.ts"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",
@@ -25,6 +28,7 @@
     "@types/react-dom": "^19.0.1",
     "eslint": "^9.16.0",
     "eslint-config-next": "^15.0.4",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.2"
   },
   "overrides": {

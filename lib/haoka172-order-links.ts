@@ -1,4 +1,7 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import { getDefaultHaoka172Account } from "@/lib/haoka172-accounts";
+import type { CatalogSourceState } from "@/lib/types";
 
 type ProductEnCatalogItem = {
   productID?: number;
@@ -34,23 +37,32 @@ export type Haoka172OrderLink = {
   callMinutes?: string;
   age1?: number;
   age2?: number;
+  updatedAt?: string;
 };
 
 const H5_BASE_URL = "https://haokawx.lot-ml.com";
 const ORDER_LINK_SNAPSHOT_PATH = path.join(process.cwd(), ".data", "haoka172-order-links-snapshot.json");
+const CATALOG_SNAPSHOT_PATH = path.join(process.cwd(), ".data", "haoka172-catalog-snapshot.json");
 const orderCatalogCache = new Map<string, { expiresAt: number; links: Map<number, Haoka172OrderLink> }>();
 const orderCatalogInFlight = new Map<string, Promise<Map<number, Haoka172OrderLink>>>();
+let orderLinksSourceState: CatalogSourceState = { status: "fallback" };
+
+function recordSourceState(status: CatalogSourceState["status"], links: Map<number, Haoka172OrderLink>) {
+  orderLinksSourceState = { status, checkedAt: new Date().toISOString(), updatedAt: [...links.values()].map((link) => link.updatedAt).filter((value): value is string => Boolean(value)).sort().at(-1) };
+}
+
+export function getOrderLinksSourceState() { return { ...orderLinksSourceState }; }
 
 function getOrderLinkCacheTtlMs() {
-  return Number(process.env.HAOKA172_ORDER_LINK_CACHE_TTL_SECONDS ?? 600) * 1000;
+  return Math.min(1800, Math.max(1, Number(process.env.HAOKA172_ORDER_LINK_CACHE_TTL_SECONDS) || 1800)) * 1000;
 }
 
 function getOrderLinkMaxRetries() {
-  return Number(process.env.HAOKA172_ORDER_LINK_MAX_RETRIES ?? 4);
+  return Number(process.env.HAOKA172_ORDER_LINK_MAX_RETRIES ?? 2);
 }
 
 function getOrderLinkSnapshotMaxAgeMs() {
-  return Number(process.env.HAOKA172_ORDER_LINK_SNAPSHOT_MAX_AGE_SECONDS ?? 129600) * 1000;
+  return Math.min(1800, Math.max(1, Number(process.env.HAOKA172_ORDER_LINK_SNAPSHOT_MAX_AGE_SECONDS) || 1800)) * 1000;
 }
 
 export function getHaoka172OrderUserId() {
@@ -98,7 +110,7 @@ function parseOrderUrl(shareUrl: string) {
   }
 }
 
-function toOrderLink(item: ProductEnCatalogItem): Haoka172OrderLink | undefined {
+function toOrderLink(item: ProductEnCatalogItem, updatedAt?: string): Haoka172OrderLink | undefined {
   const productID = Number(item.productID ?? item.id);
   const shareUrl = getShareUrl(item);
 
@@ -110,6 +122,7 @@ function toOrderLink(item: ProductEnCatalogItem): Haoka172OrderLink | undefined 
 
   return {
     productID,
+    updatedAt,
     productName: item.name || `套餐 ${productID}`,
     shareUrl: parsed.shareUrl,
     pudId: parsed.pudId,
@@ -126,7 +139,8 @@ function toOrderLink(item: ProductEnCatalogItem): Haoka172OrderLink | undefined 
 
 async function readOrderLinksFromSnapshot(userId: string, options: { allowStale?: boolean } = {}) {
   try {
-    const snapshot = JSON.parse(await readFile(ORDER_LINK_SNAPSHOT_PATH, "utf8")) as {
+    const bundle = await readFile(CATALOG_SNAPSHOT_PATH, "utf8").then((data) => JSON.parse(data)).catch(() => undefined);
+    const snapshot = (bundle?.orderLinksSnapshot ?? JSON.parse(await readFile(ORDER_LINK_SNAPSHOT_PATH, "utf8"))) as {
       syncedAt?: string;
       userId?: string;
       links?: Haoka172OrderLink[];
@@ -138,7 +152,7 @@ async function readOrderLinksFromSnapshot(userId: string, options: { allowStale?
       return undefined;
     }
 
-    if (!isFresh && !options.allowStale && process.env.HAOKA172_ALLOW_STALE_SNAPSHOT !== "1") {
+    if (!isFresh && !options.allowStale) {
       return undefined;
     }
 
@@ -146,7 +160,7 @@ async function readOrderLinksFromSnapshot(userId: string, options: { allowStale?
       return undefined;
     }
 
-    return new Map(snapshot.links.map((link) => [link.productID, link]));
+    return new Map(snapshot.links.map((link) => [link.productID, { ...link, updatedAt: link.updatedAt ?? snapshot.syncedAt }]));
   } catch {
     return undefined;
   }
@@ -187,6 +201,7 @@ async function fetchOrderCatalog(userId: string) {
             "User-Agent": "Mozilla/5.0"
           },
           body,
+          signal: AbortSignal.timeout(Number(process.env.HAOKA172_TIMEOUT_MS ?? 8000)),
           cache: "no-store"
         });
 
@@ -212,17 +227,22 @@ async function fetchOrderCatalog(userId: string) {
     }
 
     const payload = (await response.json()) as ProductEnCatalogResponse;
-    if (!Array.isArray(payload.data)) {
-      throw new Error(`办理链接接口失败：${payload.message || "无商品数据"}`);
+    if (payload.code !== 0 || !Array.isArray(payload.data) || !payload.data.length) {
+      throw new Error(`办理链接接口失败：code=${payload.code}，有效数据为空或业务失败`);
     }
 
-    const links = new Map<number, Haoka172OrderLink>();
+    const links = new Map<number, Haoka172OrderLink>(cached?.links ?? (await readOrderLinksFromSnapshot(userId, { allowStale: true })) ?? []);
+    let validLiveLinks = 0;
+    const updatedAt = new Date().toISOString();
     for (const item of payload.data) {
-      const link = toOrderLink(item);
-      if (link) {
+      const link = toOrderLink(item, updatedAt);
+      if (link?.pudId && link.userId) {
         links.set(link.productID, link);
+        validLiveLinks += 1;
       }
     }
+    if (!validLiveLinks) throw new Error("办理目录没有有效链接，保留上次有效数据");
+    recordSourceState("live", links);
 
     orderCatalogCache.set(userId, {
       expiresAt: Date.now() + getOrderLinkCacheTtlMs(),
@@ -258,26 +278,36 @@ export async function getHaoka172OrderLinks() {
   if (!userId) {
     return new Map<number, Haoka172OrderLink>();
   }
+  const cached = orderCatalogCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.links;
 
   const snapshotLinks = await readOrderLinksFromSnapshot(userId);
   if (snapshotLinks?.size) {
+    recordSourceState("snapshot", snapshotLinks);
     orderCatalogCache.set(userId, {
-      expiresAt: Date.now() + getOrderLinkCacheTtlMs(),
+      expiresAt: Math.min(Date.now() + getOrderLinkCacheTtlMs(), Math.max(...[...snapshotLinks.values()].map((link) => Date.parse(link.updatedAt ?? "") + getOrderLinkSnapshotMaxAgeMs()).filter(Number.isFinite))),
       links: snapshotLinks
     });
     return snapshotLinks;
   }
 
   if (process.env.HAOKA172_DISABLE_LIVE_FETCH === "1") {
-    return (await readOrderLinksFromSnapshot(userId, { allowStale: true })) ?? new Map<number, Haoka172OrderLink>();
+    const links = (await readOrderLinksFromSnapshot(userId, { allowStale: true })) ?? new Map<number, Haoka172OrderLink>();
+    recordSourceState("fallback", links);
+    return links;
   }
 
   try {
     return await fetchOrderCatalog(userId);
   } catch (error) {
-    console.warn(error);
-    return (await readOrderLinksFromSnapshot(userId, { allowStale: true })) ?? new Map<number, Haoka172OrderLink>();
+    console.warn("haoka172_order_fetch_failed", error instanceof Error ? error.name : "UnknownError");
+    const links = cached?.links ?? (await readOrderLinksFromSnapshot(userId, { allowStale: true })) ?? new Map<number, Haoka172OrderLink>();
+    recordSourceState("fallback", links);
+    orderCatalogCache.set(userId, { expiresAt: Date.now() + 60_000, links });
+    return links;
   }
 }
-import { readFile } from "node:fs/promises";
-import path from "node:path";
+
+export async function getLastValidOrderLinkSnapshot() {
+  return (await readOrderLinksFromSnapshot(getHaoka172OrderUserId(), { allowStale: true })) ?? new Map<number, Haoka172OrderLink>();
+}

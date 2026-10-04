@@ -20,11 +20,21 @@ type TrackEvent = {
   channelKey?: string;
   channelName?: string;
   channelMatched?: boolean;
+  productIds?: number[];
+  count?: number;
+  operator?: string;
+  priceBand?: string;
+  dataBand?: string;
+  term?: string;
+  onlyConfirmed?: boolean;
+  hasKeyword?: boolean;
+  hasLocation?: boolean;
+  hasAge?: boolean;
 };
 
 export async function POST(request: Request) {
   const payload = (await request.json().catch(() => null)) as TrackEvent | null;
-  if (!payload?.event) {
+  if (!payload || !["channel_visit", "apply_click", "comparison_open", "catalog_zero_results"].includes(payload.event)) {
     return NextResponse.json({ ok: false, message: "invalid event" }, { status: 400 });
   }
 
@@ -51,7 +61,8 @@ async function sendWebhook(event: TrackEvent & { createdAt: string }) {
       "Content-Type": "application/json",
       ...(process.env.TRACK_WEBHOOK_SECRET ? { "X-Track-Secret": process.env.TRACK_WEBHOOK_SECRET } : {})
     },
-    body: JSON.stringify(event)
+    body: JSON.stringify(event),
+    signal: AbortSignal.timeout(5000)
   }).catch(() => undefined);
 }
 

@@ -1,76 +1,65 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import "./catalog-enhancements.css";
 
 type OrderFrameProps = {
   src: string;
   title: string;
 };
 
-const maxAttempts = 4;
+type FrameStatus = "loading" | "unconfirmed" | "timed-out";
+const loadTimeoutMs = 10000;
 
-function withRetryParam(src: string, attempt: number) {
-  if (attempt === 0) {
-    return src;
+function LoadingFrame({ src, title }: OrderFrameProps) {
+  const [attempt, setAttempt] = useState(0);
+  const [status, setStatus] = useState<FrameStatus>("loading");
+
+  useEffect(() => {
+    if (status !== "loading") return;
+    const timer = window.setTimeout(() => setStatus("timed-out"), loadTimeoutMs);
+    return () => window.clearTimeout(timer);
+  }, [attempt, status]);
+
+  function retry() {
+    setStatus("loading");
+    setAttempt((current) => current + 1);
   }
 
-  try {
-    const url = new URL(src);
-    url.searchParams.set("_frameRetry", String(attempt));
-    return url.toString();
-  } catch {
-    return src;
-  }
+  return (
+    <section className="order-iframe-shell recoverable-order-frame" aria-busy={status === "loading"}>
+      <div className="order-frame-recovery">
+        <p role="status">{status === "loading" ? "正在打开办理页…" : status === "timed-out" ? "办理页暂未显示，可重试或在新窗口继续。" : "页面空白或无法填写？可重试或在新窗口办理。"}</p>
+        <div><button type="button" onClick={retry}>重新加载</button><a href={src} target="_blank" rel="noopener noreferrer">新窗口办理</a></div>
+      </div>
+      <div className="order-frame-content">
+        {status === "loading" ? (
+          <div className="order-frame-skeleton" aria-hidden="true">
+            <div className="order-skeleton-top"><span /><strong>正在加载办理页</strong></div>
+            <div className="order-skeleton-form"><i /><i /><i /><i /></div>
+            <div className="order-skeleton-button" />
+          </div>
+        ) : null}
+        <iframe
+          allow="clipboard-write; payment; fullscreen"
+          className={`order-iframe${status !== "loading" ? " loaded" : ""}`}
+          key={attempt}
+          // Cross-origin load also fires for error pages; it only releases the loading overlay.
+          onLoad={() => setStatus("unconfirmed")}
+          onError={() => setStatus("timed-out")}
+          referrerPolicy="no-referrer-when-downgrade"
+          src={src}
+          title={title}
+        />
+      </div>
+    </section>
+  );
 }
 
 export function OrderFrame({ src, title }: OrderFrameProps) {
-  const [attempt, setAttempt] = useState(0);
-  const [loaded, setLoaded] = useState(false);
-  const frameSrc = useMemo(() => withRetryParam(src, attempt), [attempt, src]);
-
-  useEffect(() => {
-    setAttempt(0);
-    setLoaded(false);
-  }, [src]);
-
-  useEffect(() => {
-    if (loaded || attempt >= maxAttempts - 1) {
-      return;
-    }
-
-    const timer = window.setTimeout(() => {
-      setAttempt((current) => current + 1);
-    }, 2800 + attempt * 1200);
-
-    return () => window.clearTimeout(timer);
-  }, [attempt, loaded]);
-
-  return (
-    <section className="order-iframe-shell">
-      {!loaded ? (
-        <div className="order-frame-skeleton" aria-live="polite">
-          <div className="order-skeleton-top">
-            <span />
-            <strong>正在加载办理页</strong>
-          </div>
-          <div className="order-skeleton-form">
-            <i />
-            <i />
-            <i />
-            <i />
-          </div>
-          <div className="order-skeleton-button" />
-        </div>
-      ) : null}
-      <iframe
-        allow="clipboard-write; payment; fullscreen"
-        className={`order-iframe${loaded ? " loaded" : ""}`}
-        key={frameSrc}
-        onLoad={() => setLoaded(true)}
-        referrerPolicy="no-referrer-when-downgrade"
-        src={frameSrc}
-        title={title}
-      />
-    </section>
-  );
+  let validSrc = false;
+  try { validSrc = ["https:", "http:"].includes(new URL(src).protocol); } catch { /* Missing or invalid URLs have no actionable destination. */ }
+  if (!validSrc) return <section className="order-frame-unavailable" role="status">办理入口暂不可用，请关闭后选择其他套餐。</section>;
+  // Changing products resets the timer and frame without carrying over a previous load event.
+  return <LoadingFrame key={src} src={src} title={title} />;
 }
