@@ -13,7 +13,9 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "report:funnel": "node scripts/report-funnel.mjs",
-    "audit:sources": "tsx scripts/audit-haoka172-source.ts"
+    "audit:sources": "tsx scripts/audit-haoka172-source.ts",
+    "check:publish": "node scripts/check-netlify-publish.mjs",
+    "deploy:netlify": "NETLIFY_SITE_ID=d35be32b-9bbb-4cc8-a0a8-b0d3056d6cca npm exec --yes --package=netlify-cli@27.10.2 -- netlify build --context production && npm run check:publish && npm exec --yes --package=netlify-cli@27.10.2 -- netlify deploy --prod --no-build --dir .netlify/static --site d35be32b-9bbb-4cc8-a0a8-b0d3056d6cca"
   },
   "dependencies": {
     "lucide-react": "^0.468.0",

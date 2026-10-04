@@ -82,11 +82,13 @@ npm run sync:products -- --force --account default
 
 ## 部署
 
-部署只保留 Netlify：
+部署只保留 Netlify。当前需要保留本地历史快照，使用以下发布命令：
 
-1. 提交代码并推送到 `main`
-2. Netlify 自动执行 `npm run build:netlify`
-3. 构建前先同步商品快照，再构建 Next.js
+```bash
+npm run deploy:netlify
+```
+
+命令会按生产配置同步数据并构建，执行静态目录预检，再上传 `.netlify/static` 和服务端函数。对应代码提交使用 `[skip netlify]` 并推送到 `main`，避免另一次干净云构建覆盖本地快照。
 
 生产地址：
 
@@ -98,13 +100,9 @@ https://liuliangka.netlify.app
 
 `build:netlify` 会先强制同步商品。如果接口签名错误或上游不可用，构建会失败，避免发布空数据或错误商品。
 
-需要保留本地历史快照时，使用当前工作区的 Netlify CLI 发布。`.data` 不进 Git，干净云构建只能取得上游当次返回的数据，不能自动恢复本地历史条目：
+`.data` 不进 Git，干净云构建只能取得上游当次返回的数据，不能自动恢复本地历史条目。`netlify build` 结束后，Next.js 插件会把 `.next` 恢复为包含服务端源码和配置的构建目录；绝不能将它直接用于 `--no-build` 静态上传。拆分构建与上传时必须显式指定 `--dir .netlify/static`。
 
-```bash
-npm exec --package=netlify-cli -- netlify deploy --prod --context production --site liuliangka
-```
-
-CLI 会执行项目构建命令并打包服务端快照。此路径的代码提交添加 `[skip netlify]`，避免同一次推送触发的云构建覆盖本地发布结果。发布后核对生产域名、部署版本、`/api/catalog` 和实际浏览器筛选流程。
+`npm run check:publish` 会拒绝服务端目录、环境变量文件、配置文件、符号链接和密钥内容。发布后核对生产域名、部署版本、`/api/catalog`、实际浏览器筛选流程，并确认服务端文件路径不可公开访问。
 
 ## 低配版渠道归因
 
